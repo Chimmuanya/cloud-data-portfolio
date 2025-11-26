@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.env
+.env.*
+# Node
+node_modules/
+# Jupyter
+.ipynb_checkpoints
+# Mac
+.DS_Store
+# Visual Studio Code
+.vscode/
+# Data & outputs
+data/
+outputs/
+models/
+# Drawio temp / exports (we version control canonical .drawio xml)
+diagrams/exported/
+# Secrets & local config
+secrets/
+aws_credentials/

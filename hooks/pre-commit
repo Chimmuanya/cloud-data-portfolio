@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Example pre-commit hook to run linters (user can customize)
+# This template runs a fast Python check if available
+if command -v python >/dev/null 2>&1; then
+  python -m py_compile $(git diff --cached --name-only --diff-filter=AM | grep -E '\.py$' || true) 2>/dev/null || {
+    echo "Python compile check failed for staged files."
+    exit 1
+  }
+fi

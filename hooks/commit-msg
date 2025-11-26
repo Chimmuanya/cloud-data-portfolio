@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Simple commit-msg hook to enforce Conventional Commit pattern
+MSG_FILE="\$1"
+MSG="\$(cat \$MSG_FILE)"
+PATTERN="^(feat|fix|chore|docs|style|refactor|perf|test|build|ci)(\\([a-z0-9-]+\\))?: [A-Z0-9].+"
+if ! echo "\$MSG" | grep -Ei -q "\$PATTERN"; then
+  echo "ERROR: Commit message does not follow Conventional Commits pattern."
+  echo "Example: feat(serverless): add csv qc lambda"
+  exit 1
+fi
