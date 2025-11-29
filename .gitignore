@@ -21,3 +21,5 @@ diagrams/exported/
 # Secrets & local config
 secrets/
 aws_credentials/
+# exported diagrams (we still want committed final PNGs but avoid intermediate temp files)
+**/diagrams/exported/*.tmp.png
