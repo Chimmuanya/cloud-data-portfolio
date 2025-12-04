@@ -1,17 +1,44 @@
 {
-  "Version":"2012-10-17",
-  "Statement":[
+  "Version": "2012-10-17",
+  "Statement": [
     {
-      "Sid":"PackagingBucketWriteRead",
-      "Effect":"Allow",
-      "Action":["s3:PutObject","s3:GetObject","s3:DeleteObject","s3:ListBucket","s3:GetBucketLocation"],
-      "Resource":["arn:aws:s3:::${PACKAGING_BUCKET}","arn:aws:s3:::${PACKAGING_BUCKET}/*"]
+      "Sid": "PackagingBucketAccess",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:PutObjectAcl",
+        "s3:AbortMultipartUpload",
+        "s3:ListMultipartUploadParts",
+        "s3:GetObject",
+        "s3:GetObjectVersion"
+      ],
+      "Resource": [
+        "arn:aws:s3:::cmogbo-sam-pkg-1764511935/*"
+      ]
     },
     {
-      "Sid":"InputBucketReadWriteReports",
-      "Effect":"Allow",
-      "Action":["s3:GetObject","s3:PutObject","s3:DeleteObject","s3:ListBucket","s3:GetBucketLocation","s3:GetBucketAcl"],
-      "Resource":["arn:aws:s3:::508012525512-data-qc-input","arn:aws:s3:::508012525512-data-qc-input/*"]
+      "Sid": "PackagingBucketListAndLocation",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucket",
+        "s3:GetBucketLocation"
+      ],
+      "Resource": [
+        "arn:aws:s3:::cmogbo-sam-pkg-1764511935"
+      ]
+    },
+    {
+      "Sid": "InputBucketReadAndReports",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:ListBucket",
+        "s3:GetBucketLocation"
+      ],
+      "Resource": [
+        "arn:aws:s3:::508012525512-data-qc-input",
+        "arn:aws:s3:::508012525512-data-qc-input/*"
+      ]
     }
   ]
 }
