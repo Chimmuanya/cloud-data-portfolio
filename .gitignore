@@ -39,3 +39,4 @@ aws_credentials/
 # exported diagrams (we still want committed final PNGs but avoid intermediate temp files)
 **/diagrams/exported/*.tmp.png
 .aws-sam/
+project-01-serverless-data-qc/.aws-sam/
