@@ -233,11 +233,11 @@ The Lambda function requires **only** the minimal permissions needed:
 
 During development, I encountered multiple IAM failures that reflect **real production challenges**:
 
-❌ **`AccessDenied` on `iam:CreateRole`** - CloudFormation needs to create Lambda execution roles  
-❌ **`AccessDenied` on `iam:TagRole`** - CFN requires tagging permissions for every resource  
-❌ **`AccessDenied` on `s3:PutBucketNotification`** - S3 event configuration requires special permissions  
-❌ **Circular dependency errors** - Roles, policies, and Lambda functions have ordering constraints  
-❌ **CloudFormation rollback failures** - Incomplete IAM permissions cause stuck stacks  
+**`AccessDenied` on `iam:CreateRole`** - CloudFormation needs to create Lambda execution roles  
+**`AccessDenied` on `iam:TagRole`** - CFN requires tagging permissions for every resource  
+**`AccessDenied` on `s3:PutBucketNotification`** - S3 event configuration requires special permissions  
+**Circular dependency errors** - Roles, policies, and Lambda functions have ordering constraints  
+**CloudFormation rollback failures** - Incomplete IAM permissions cause stuck stacks  
 
 **The solution:** Four separate, scoped IAM policies of same names or names similar to these:
 
