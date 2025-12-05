@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # run from project-01-serverless-data-qc
-DEPLOY_PROFILE=${DEPLOY_PROFILE:-deploy-ci}
-AWS_REGION=${AWS_REGION:-eu-west-1}
-PACKAGING_BUCKET=${PACKAGING_BUCKET:-cmogbo-sam-pkg-1764511935}
-INPUT_BUCKET=${INPUT_BUCKET:-508012525512-data-qc-input}
+# Usage project-01-serverless-data-qc/scripts/deploy-local.sh DEPLOY_PROFILE AWS_REGION PACKAGING_BUCKET INPUT_BUCKET
+
+DEPLOY_PROFILE=${DEPLOY_PROFILE:-}
+AWS_REGION=${AWS_REGION:-}
+PACKAGING_BUCKET=${PACKAGING_BUCKET:-}
+INPUT_BUCKET=${INPUT_BUCKET:-}
 
 echo "Activating venv if present..."
 [ -f .venv/bin/activate ] && source .venv/bin/activate || true
