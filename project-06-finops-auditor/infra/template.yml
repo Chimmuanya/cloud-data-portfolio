@@ -1,0 +1,5 @@
+# project-06-finops-auditor - placeholder SAM / infra template
+# Replace with project-specific resources (Lambda, S3, DynamoDB, SQS, etc.)
+AWSTemplateFormatVersion: '2010-09-09'
+Description: "project-06-finops-auditor infra - replace with real template"
+Resources: {}

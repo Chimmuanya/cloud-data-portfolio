@@ -1,0 +1,5 @@
+# project-04-radiology-dicom-etl - placeholder SAM / infra template
+# Replace with project-specific resources (Lambda, S3, DynamoDB, SQS, etc.)
+AWSTemplateFormatVersion: '2010-09-09'
+Description: "project-04-radiology-dicom-etl infra - replace with real template"
+Resources: {}

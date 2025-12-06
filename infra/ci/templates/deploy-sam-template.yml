@@ -1,0 +1,22 @@
+# infra/ci/templates/deploy-sam-template.yml
+# This is a CI job template placeholder. In your GitHub Actions workflows, import or copy this
+# and set PROJECT_NAME / STACK_NAME / AWS_REGION / AWS_PROFILE / S3_BUCKET variables.
+# Keep secrets in GitHub Secrets (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, AWS_PROFILE)
+
+name: Deploy SAM - ${{ matrix.project }}
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'project-*/infra/**'
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up AWS CLI
+        run: sudo apt-get update && sudo apt-get install -y awscli
+      - name: SAM Build & Deploy (placeholder)
+        run: |
+          echo "Replace this step with your sam build & sam deploy commands for the target project."
+

@@ -1,0 +1,6 @@
+# project-02-kpi-dashboard - placeholder infra/template.yml
+# Replace placeholders with project-specific resources (Lambda, S3, DynamoDB, SQS, EC2, etc.)
+AWSTemplateFormatVersion: '2010-09-09'
+Description: "project-02-kpi-dashboard infra - replace with real template"
+Resources: {}
+
