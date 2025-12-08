@@ -1,0 +1,68 @@
+# -----------------------------
+# Python
+# -----------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+*.egg
+*.log
+
+# -----------------------------
+# Virtual environments
+# -----------------------------
+venv/
+.env/
+.venv/
+
+# -----------------------------
+# Streamlit
+# -----------------------------
+.streamlit/
+**/.streamlit/
+*/.streamlit/
+
+# -----------------------------
+# Jupyter / Notebooks
+# -----------------------------
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
+
+# -----------------------------
+# Data (never commit raw/processed)
+# -----------------------------
+data/raw/*
+# data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Allow schema files or example datasets if needed
+# data/*.parquet
+# *.parquet
+# *.csv
+
+# -----------------------------
+# AWS Credentials Safety
+# -----------------------------
+.aws/
+**/.aws/
+*.pem
+*.key
+secrets.env
+
+# -----------------------------
+# MacOS / Linux junk
+# -----------------------------
+.DS_Store
+Thumbs.db
+
+# -----------------------------
+# Build / temporary files
+# -----------------------------
+dist/
+build/
+.tmp/
+temp/

@@ -1,0 +1,8 @@
+# requirements-minimal.txt
+streamlit>=1.18
+pandas>=2.0
+numpy>=1.24
+plotly>=5.0
+pyarrow>=10.0   # optional: only if you save/load parquet locally
+boto3>=1.26     # optional: only if you call AWS APIs (S3 uploads/downloads). Keep if you plan to use boto3.
+python-dateutil>=2.8
