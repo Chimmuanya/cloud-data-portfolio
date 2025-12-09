@@ -287,7 +287,7 @@ sudo systemctl start streamlit
 sudo systemctl status streamlit
 ```
 
-Now your dashboard runs **24/7** like a real production service.
+Now your dashboard runs **24/7** like a real production service. **Link to this particular production:** (Ecommerce Dashboard on EC2)[http://18.203.85.230:8501/].
 
 ---
 
