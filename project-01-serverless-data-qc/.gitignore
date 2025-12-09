@@ -61,7 +61,83 @@ logs/
 */.pytest_cache/
 pytestdebug.log
 
-# ===============================
+# ===============================# ----------------------------
+# Python
+# ----------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+.eggs/
+dist/
+build/
+pip-wheel-metadata/
+*.manifest
+*.spec
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+
+# ----------------------------
+# VSCode
+# ----------------------------
+.vscode/
+.history/
+
+# ----------------------------
+# OS files
+# ----------------------------
+.DS_Store
+Thumbs.db
+
+# ----------------------------
+# Logs & temp
+# ----------------------------
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+
+# ----------------------------
+# AWS & Serverless / SAM
+# ----------------------------
+.aws-sam/
+.sam-cache/
+.aws/
+.s3/
+terraform.tfstate
+terraform.tfstate.backup
+
+# ----------------------------
+# Node (if present)
+# ----------------------------
+node_modules/
+npm-debug.log
+
+# ----------------------------
+# Local data / artifacts
+# ----------------------------
+data/
+*.csv~
+*.bak
+*.swp
+
+# Ignore secrets (never commit)
+.env.local
+.env.prod
+.env.dev
+*.pem
+*.key
+
 # Misc
 # ===============================
 *.bak

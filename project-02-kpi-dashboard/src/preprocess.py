@@ -2,15 +2,20 @@
 Canonical preprocessing utilities for Project 2 (E-commerce KPIs).
 
 Usage examples (from project root):
-python -m src.preprocess --raw ../data/raw/data.csv --out ../data/processed --steps all
+    python -m src.preprocess --raw ../data/raw/data.csv --out ../data/processed --steps all
+
 Or run specific steps:
-python -m src.preprocess --raw ../data/raw/data.csv --out ../data/processed --steps transform,daily,products,rfm
+    python -m src.preprocess --raw ../data/raw/data.csv --out ../data/processed --steps transform,daily,products,rfm
 
 Outputs (by default written into --out directory):
-sample_kpis.csv
-daily_kpis.csv
-top_products_summary.csv
-rfm_customers.csv
+ - sample_kpis.csv
+ - daily_kpis.csv  (CSV)
+ - daily_kpis.parquet/ (partitioned by year/month)
+ - top_products_summary.csv
+ - top_products_summary.parquet
+ - rfm_customers.csv
+ - rfm_customers.parquet
+ - metadata.json
 
 Author: Generated/adapted from notebook flow
 """
@@ -19,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import hashlib
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -206,20 +212,18 @@ def finalize_cancellations(df: pd.DataFrame) -> pd.DataFrame:
 def compute_daily_kpis(df: pd.DataFrame, require_operational: bool = True) -> pd.DataFrame:
     """
     Returns a daily (date) DataFrame with:
-    - date
-    - tx_all (all lines)
-    - transactions (unique InvoiceNo for operational rows)
-    - operational_revenue (sum LineTotal excluding cancellations & adjustments)
-    - cancellations (count)
-    - aov (avg order value computed at invoice-level)
+      - date
+      - tx_all (all lines)
+      - transactions (unique InvoiceNo for operational rows)
+      - operational_revenue (sum LineTotal excluding cancellations & adjustments)
+      - cancellations (count)
+      - aov (avg order value computed at invoice-level)
     """
     df = df.copy()
-
     # ensure InvoiceDate is datetime
     if "InvoiceDate" not in df.columns or not pd.api.types.is_datetime64_any_dtype(df["InvoiceDate"]):
-        raise RuntimeError(
-            "InvoiceDate missing or not datetime. Run canonical_transform and ensure InvoiceDate parsed."
-        )
+        raise RuntimeError("InvoiceDate missing or not datetime. Run canonical_transform and ensure InvoiceDate parsed.")
+
     df["date"] = df["InvoiceDate"].dt.floor("d")
 
     # operational rows = prefer explicit flag if present
@@ -230,7 +234,6 @@ def compute_daily_kpis(df: pd.DataFrame, require_operational: bool = True) -> pd
 
     # tx_all: number of lines per day
     daily_all = df.groupby("date").size().rename("tx_all")
-
     # operational transactions: unique invoice count per day (operational)
     if "InvoiceNo" in df.columns:
         daily_ops_tx = df[df["operational"]].groupby("date")["InvoiceNo"].nunique().rename("transactions")
@@ -249,9 +252,7 @@ def compute_daily_kpis(df: pd.DataFrame, require_operational: bool = True) -> pd
 
     # compute AOV (average order value) at invoice-level:
     if "InvoiceNo" in df.columns:
-        inv_rev = (
-            df[df["operational"]].groupby(["date", "InvoiceNo"])["LineTotal"].sum().rename("invoice_revenue")
-        )
+        inv_rev = df[df["operational"]].groupby(["date", "InvoiceNo"])["LineTotal"].sum().rename("invoice_revenue")
         aov = inv_rev.groupby("date").mean().rename("aov")
         daily = daily.set_index("date").join(aov).reset_index()
         daily["aov"] = daily["aov"].fillna(0.0)
@@ -267,34 +268,19 @@ def compute_daily_kpis(df: pd.DataFrame, require_operational: bool = True) -> pd
 
 
 # ---------- Top products summary ----------
-def top_products_summary(
-    df: pd.DataFrame, product_key_candidates: Optional[List[str]] = None, top_n: int = 10
-) -> pd.DataFrame:
+def top_products_summary(df: pd.DataFrame, product_key_candidates: Optional[List[str]] = None, top_n: int = 10) -> pd.DataFrame:
     """
     Aggregate revenue and volume by an identified product key (StockCode etc).
     Returns the full aggregated DataFrame (unsliced) with rev_share and qty_share.
     """
     df = df.copy()
-
-    product_key_candidates = product_key_candidates or [
-        "StockCode",
-        "ProductID",
-        "ItemID",
-        "SKU",
-        "Product",
-    ]
+    product_key_candidates = product_key_candidates or ["StockCode", "ProductID", "ItemID", "SKU", "Product"]
     prod_key = next((c for c in product_key_candidates if c in df.columns), None)
-
     if prod_key is None:
-        raise RuntimeError(
-            "No product identifier column found. Add one of: %s" % product_key_candidates
-        )
+        raise RuntimeError("No product identifier column found. Add one of: %s" % product_key_candidates)
+
     # operational only
-    oper = df[
-        ~df.get("is_cancellation", False)
-        & df.get("LineTotal").notna()
-        & ~df.get("is_adjustment", False)
-    ].copy()
+    oper = df[~df.get("is_cancellation", False) & df.get("LineTotal").notna() & ~df.get("is_adjustment", False)].copy()
 
     # ensure quantity exists
     if "Quantity" not in oper.columns:
@@ -304,47 +290,28 @@ def top_products_summary(
         revenue=("LineTotal", "sum"),
         qty=("Quantity", "sum"),
         tx_lines=("InvoiceNo", "count"),
-        distinct_customers=(
-            "CustomerID",
-            lambda s: s.nunique() if "CustomerID" in oper.columns else 0,
-        ),
+        distinct_customers=("CustomerID", lambda s: s.nunique() if "CustomerID" in oper.columns else 0),
     ).reset_index()
 
     # attach description first non-null if present
     if "Description" in oper.columns:
-        desc = oper.groupby(prod_key)["Description"].agg(
-            lambda s: next((x for x in s.dropna().astype(str)), "")
-        )
+        desc = oper.groupby(prod_key)["Description"].agg(lambda s: next((x for x in s.dropna().astype(str)), ""))
         desc = desc.reset_index().rename(columns={"Description": "description"})
         agg = agg.merge(desc, on=prod_key, how="left")
     else:
         agg["description"] = ""
 
-    # create short description for display (useful for dashboard)
     agg["desc_short"] = agg["description"].fillna("").apply(lambda s: (s[:57] + "...") if len(s) > 60 else s)
-
-    # compute avg_price defensively
-    # avoid division by zero: if qty == 0 set avg_price to NaN
     agg["avg_price"] = (agg["revenue"] / agg["qty"]).replace([np.inf, -np.inf], np.nan)
     agg.loc[agg["qty"] == 0, "avg_price"] = np.nan
-
-    # compute rev/qty share (make sure denominator not zero)
-    total_rev = agg["revenue"].sum() if agg["revenue"].sum() != 0 else 1.0
-    total_qty = agg["qty"].sum() if agg["qty"].sum() != 0 else 1.0
-    agg["rev_share"] = agg["revenue"] / total_rev
-    agg["qty_share"] = agg["qty"] / total_qty
-
-    # is_meta heuristic (short code all-alpha or very short)
-    agg["is_meta"] = agg[prod_key].astype(str).str.len().le(3) | agg[prod_key].astype(str).str.match(
-        r"^[A-Z]+$"
-    )
 
     total_rev = agg["revenue"].sum()
     total_qty = agg["qty"].sum() if agg["qty"].sum() != 0 else 1.0
     agg["rev_share"] = agg["revenue"] / (total_rev or 1.0)
     agg["qty_share"] = agg["qty"] / total_qty
 
-    # sorting
+    agg["is_meta"] = agg[prod_key].astype(str).str.len().le(3) | agg[prod_key].astype(str).str.match(r"^[A-Z]+$")
+
     agg = agg.sort_values("revenue", ascending=False).reset_index(drop=True)
     return agg
 
@@ -357,42 +324,30 @@ def compute_rfm(df: pd.DataFrame, snapshot_date: Optional[datetime] = None) -> p
     """
     if "CustomerID" not in df.columns:
         raise RuntimeError("CustomerID column not present; cannot compute RFM")
+
     oper = df[~df.get("is_cancellation", False) & ~df.get("is_adjustment", False)].copy()
     snapshot_date = snapshot_date or (oper["InvoiceDate"].max() + timedelta(days=1))
-
-    # group by customer
     agg = oper.groupby("CustomerID").agg(
         last_tx=("InvoiceDate", "max"),
         recency_days=("InvoiceDate", lambda x: (snapshot_date - x.max()).days),
-        frequency=(
-            "InvoiceNo",
-            lambda s: s.nunique() if "InvoiceNo" in oper.columns else s.count(),
-        ),
+        frequency=("InvoiceNo", lambda s: s.nunique() if "InvoiceNo" in oper.columns else s.count()),
         monetary=("LineTotal", "sum"),
     ).reset_index()
 
-    # defensive: handle missing / NaN recency (customers with no date)
     agg["recency_days"] = pd.to_numeric(agg["recency_days"], errors="coerce").fillna(np.inf)
     agg["frequency"] = pd.to_numeric(agg["frequency"], errors="coerce").fillna(0).astype(int)
     agg["monetary"] = pd.to_numeric(agg["monetary"], errors="coerce").fillna(0.0)
 
-    # ranks: recency inverted (lower recency => better)
     try:
         agg["R_rank"] = pd.qcut(agg["recency_days"].rank(method="first"), 4, labels=[4, 3, 2, 1])
         agg["F_rank"] = pd.qcut(agg["frequency"].rank(method="first"), 4, labels=[1, 2, 3, 4])
         agg["M_rank"] = pd.qcut(agg["monetary"].rank(method="first"), 4, labels=[1, 2, 3, 4])
     except ValueError as e:
-        # fallback: when there are fewer unique values than bins
         logger.warning("pd.qcut failed (%s). Falling back to rank percentiles.", e)
         agg["R_rank"] = pd.cut(agg["recency_days"], bins=4, labels=[4, 3, 2, 1]).astype(object)
-        agg["F_rank"] = pd.cut(
-            agg["frequency"].rank(method="first"), bins=4, labels=[1, 2, 3, 4]
-        ).astype(object)
-        agg["M_rank"] = pd.cut(
-            agg["monetary"].rank(method="first"), bins=4, labels=[1, 2, 3, 4]
-        ).astype(object)
+        agg["F_rank"] = pd.cut(agg["frequency"].rank(method="first"), bins=4, labels=[1, 2, 3, 4]).astype(object)
+        agg["M_rank"] = pd.cut(agg["monetary"].rank(method="first"), bins=4, labels=[1, 2, 3, 4]).astype(object)
 
-    # convert ranks to int where possible (coerce NaNs)
     for col in ("R_rank", "F_rank", "M_rank"):
         agg[col] = pd.to_numeric(agg[col], errors="coerce").fillna(0).astype(int)
 
@@ -442,11 +397,7 @@ def run_pipeline(raw: Path, out_dir: Path, steps: List[str]) -> Dict[str, Path]:
             "is_operational",
         ]
         existing_cols = [c for c in sample_cols if c in df.columns]
-        sample = (
-            df.loc[df["LineTotal"].notna(), existing_cols]
-            .sort_values("InvoiceDate", ascending=False)
-            .head(500)
-        )
+        sample = df.loc[df["LineTotal"].notna(), existing_cols].sort_values("InvoiceDate", ascending=False).head(500)
         sample_path = save_df(sample, out_dir / "sample_kpis.csv", index=False)
         results["sample_kpis"] = sample_path
     else:
@@ -476,40 +427,115 @@ def run_pipeline(raw: Path, out_dir: Path, steps: List[str]) -> Dict[str, Path]:
             logger.warning("CustomerID missing: skipping RFM step.")
 
     # --- Additional artifact outputs (parquet + metadata) ---
-    # Write parquet versions and metadata.json similar to notebook flow
     try:
-        # write parquet outputs if corresponding variables exist
+        # detect parquet engine
+        parquet_engine = None
+        try:
+            import pyarrow  # noqa: F401
+            parquet_engine = "pyarrow"
+        except Exception:
+            try:
+                import fastparquet  # noqa: F401
+                parquet_engine = "fastparquet"
+            except Exception:
+                parquet_engine = None
+
+        if parquet_engine is None:
+            logger.warning("No parquet engine available (pyarrow/fastparquet). Parquet outputs will be skipped.")
+
+        def _write_parquet(df: pd.DataFrame, path: Path, partition_cols: Optional[list] = None):
+            if parquet_engine is None:
+                return False
+            try:
+                # pandas will write partitioned directory if partition_cols provided
+                if partition_cols:
+                    df.to_parquet(path, engine=parquet_engine, partition_cols=partition_cols, index=False)
+                else:
+                    df.to_parquet(path, engine=parquet_engine, index=False)
+                logger.info("Wrote parquet: %s (engine=%s)", path.name, parquet_engine)
+                return True
+            except Exception as e:
+                logger.warning("Failed to write parquet %s (%s)", path.name, e)
+                return False
+
+                # DAILY: partition by year/month (if possible)
         if "daily" in locals():
             try:
-                daily.to_parquet(out_dir / "daily_kpis.parquet", index=False)
-                logger.info("Wrote parquet: daily_kpis.parquet")
+                daily = daily.copy()
+                if "date" in daily.columns:
+                    # ensure 'date' is a proper datetime
+                    daily["date"] = pd.to_datetime(daily["date"], errors="coerce")
+
+                    # Create stable partition columns as strings to avoid dictionary-encoding reader issues.
+                    # Year as 'YYYY', month as zero-padded 'MM' (strings)
+                    daily["year"] = daily["date"].dt.year.astype("Int64").astype("Int64").astype(object)
+                    # Prefer writing partition keys as plain strings to avoid compatibility issues:
+                    daily["year_str"] = daily["date"].dt.year.astype(int).astype(str)
+                    daily["month_str"] = daily["date"].dt.month.astype(int).apply(lambda x: f"{x:02d}")
+
+                    # Use the string partition cols when writing parquet to create folders like year=2024/month=01
+                    partition_cols = ["year_str", "month_str"]
+
+                    # write partitioned parquet directory (folder: daily_kpis.parquet)
+                    _write_parquet(daily, out_dir / "daily_kpis.parquet", partition_cols=partition_cols)
+
+                    # (optional) drop helper string cols from CSV view or keep as columns if desired
+                    # ensure CSV still has the original 'date' and numeric columns
+                else:
+                    _write_parquet(daily, out_dir / "daily_kpis.parquet")
+                # daily CSV copy is already written earlier as daily_kpis.csv
             except Exception as e:
-                logger.warning("Failed to write daily parquet (%s).", e)
+                logger.warning("Failed to export daily artifact (%s)", e)
+
+
+        # PRODUCTS
         if "prod" in locals():
             try:
-                prod.to_parquet(out_dir / "top_products_summary.parquet", index=False)
-                logger.info("Wrote parquet: top_products_summary.parquet")
+                # single-file parquet
+                _write_parquet(prod, out_dir / "top_products_summary.parquet")
             except Exception as e:
-                logger.warning("Failed to write products parquet (%s).", e)
+                logger.warning("Failed to export products parquet (%s)", e)
+
+        # RFM
         if "rfm" in locals():
             try:
-                rfm.to_parquet(out_dir / "rfm_customers.parquet", index=False)
-                logger.info("Wrote parquet: rfm_customers.parquet")
+                _write_parquet(rfm, out_dir / "rfm_customers.parquet")
             except Exception as e:
-                logger.warning("Failed to write rfm parquet (%s).", e)
+                logger.warning("Failed to export rfm parquet (%s)", e)
 
-        # write metadata.json
+        # compute raw file hash (sha256)
+        raw_hash = None
+        try:
+            raw_path = Path(raw)
+            if raw_path.exists() and raw_path.is_file():
+                h = hashlib.sha256()
+                with open(raw_path, "rb") as fh:
+                    for chunk in iter(lambda: fh.read(8192), b""):
+                        h.update(chunk)
+                raw_hash = h.hexdigest()
+            else:
+                logger.warning("Raw path does not exist or is not a file for hashing: %s", raw_path)
+        except Exception as e:
+            logger.warning("Failed to compute raw file hash (%s)", e)
+
+        # metadata payload
         meta = {
             "generated_at": datetime.utcnow().isoformat() + "Z",
             "rows": {
-                "daily": len(daily) if "daily" in locals() else 0,
-                "products": len(prod) if "prod" in locals() else 0,
-                "rfm": len(rfm) if "rfm" in locals() else 0,
+                "daily": int(len(daily)) if "daily" in locals() else 0,
+                "products": int(len(prod)) if "prod" in locals() else 0,
+                "rfm": int(len(rfm)) if "rfm" in locals() else 0,
+            },
+            "input_raw_file_hash": {"sha256": raw_hash} if raw_hash else {},
+            "columns": {
+                "daily": list(daily.columns) if "daily" in locals() else [],
+                "products": list(prod.columns) if "prod" in locals() else [],
+                "rfm": list(rfm.columns) if "rfm" in locals() else [],
             },
             "source": str(raw),
         }
         with open(out_dir / "metadata.json", "w") as fh:
-            json.dump(meta, fh, indent=2)
+            json.dump(meta, fh, indent=2, default=str)
         logger.info("Wrote metadata.json to %s", out_dir / "metadata.json")
     except Exception as e:
         logger.warning("Failed to write supplemental artifacts (parquet/metadata): %s", e)
@@ -520,19 +546,9 @@ def run_pipeline(raw: Path, out_dir: Path, steps: List[str]) -> Dict[str, Path]:
 def _parse_args():
     """Parses command line arguments."""
     p = argparse.ArgumentParser(description="Project 2 preprocessing/ETL utilities")
-    p.add_argument(
-        "--raw", required=True, help="Path to raw CSV (e.g. ../data/raw/data.csv)"
-    )
-    p.add_argument(
-        "--out",
-        required=True,
-        help="Output directory to write processed CSVs (e.g. ../data/processed)",
-    )
-    p.add_argument(
-        "--steps",
-        default="all",
-        help="Comma-separated steps: transform,daily,products,rfm or 'all'",
-    )
+    p.add_argument("--raw", required=True, help="Path to raw CSV (e.g. ../data/raw/data.csv)")
+    p.add_argument("--out", required=True, help="Output directory to write processed CSVs (e.g. ../data/processed)")
+    p.add_argument("--steps", default="all", help="Comma-separated steps: transform,daily,products,rfm or 'all'")
     return p.parse_args()
 
 
