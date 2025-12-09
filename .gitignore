@@ -40,3 +40,6 @@ aws_credentials/
 **/diagrams/exported/*.tmp.png
 .aws-sam/
 project-01-serverless-data-qc/.aws-sam/
+*.zip
+*.docx
+*.pdf
