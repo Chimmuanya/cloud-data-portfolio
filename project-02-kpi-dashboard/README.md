@@ -1,4 +1,4 @@
-# **Project 02 — E-Commerce KPI Dashboard (ETL + AWS Cloud Deployment)**
+# **Project 02: E-Commerce KPI Dashboard (ETL + AWS Cloud Deployment)**
 
 *A complete analytics workflow demonstrating ETL engineering, KPI computation, and cloud deployment.*
 
