@@ -1,0 +1,49 @@
+name: ETL -> S3
+
+on:
+  workflow_dispatch:        # manual runs available
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '0 3 * * *'     # daily 03:00 UTC (adjust)
+
+jobs:
+  build-and-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::508012525512:role/GithubActions_Project2_OIDC_Role
+          aws-region: eu-west-1
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run preprocess
+        env:
+          RAW_PATH: data/raw/data.csv
+        run: |
+          python -m src.preprocess --raw "${{ github.workspace }}/${{ env.RAW_PATH }}" --out ./out --steps all
+
+      - name: Upload out/ to S3 (processed prefix)
+        run: |
+          aws s3 sync ./out s3://my-project2-processed-508012525512-kpis/processed --delete --region ${{ env.AWS_REGION }}
+        env:
+          AWS_REGION: eu-west-1
+
+      - name: Upload uptime file
+        run: |
+          echo "last_run: $(date --utc +%Y-%m-%dT%H:%M:%SZ)" > uptime.md
+          aws s3 cp uptime.md s3://my-project2-processed-508012525512-kpis/uptime.md --region ${{ env.AWS_REGION }}
+        env:
+          AWS_REGION: eu-west-1
