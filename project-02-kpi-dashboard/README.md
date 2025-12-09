@@ -1,10 +1,10 @@
-# **Project 02 — E-Commerce KPI Dashboard (ETL + AWS Cloud Deployment)**
+# **Project 02: E-Commerce KPI Dashboard (ETL + AWS Cloud Deployment)**
 
 *A complete analytics workflow demonstrating ETL engineering, KPI computation, and cloud deployment.*
 
 ---
 
-# ** 1. Executive Overview**
+# **1. Executive Overview**
 
 This project performs end-to-end analytics on an online retail (e-commerce) dataset using:
 
@@ -50,7 +50,7 @@ project-02-kpi-dashboard/
 
 ---
 
-# ** 3. ETL Pipeline Overview**
+# **3. ETL Pipeline Overview**
 
 ### 🔧 **ETL Entry Point:**
 
@@ -113,7 +113,7 @@ This is the detailed, portfolio-quality walkthrough showing your **AWS Solutions
 
 ---
 
-# ** 5.1 Architecture Diagram (ASCII)**
+# **5.1 Architecture Diagram (ASCII)**
 
 ```
 +-------------------------+
@@ -135,7 +135,7 @@ This is the detailed, portfolio-quality walkthrough showing your **AWS Solutions
 
 ---
 
-# ** 5.2 Create S3 Bucket (Console)**
+# **5.2 Create S3 Bucket (Console)**
 
 1. Go to **S3 Console → Create Bucket**
 2. Name: `project02-kpi-yourname`
@@ -150,7 +150,7 @@ This is the detailed, portfolio-quality walkthrough showing your **AWS Solutions
 
 ---
 
-# ** 5.3 Create IAM Role for EC2**
+# **5.3 Create IAM Role for EC2**
 
 1. Go to **IAM → Roles → Create Role**
 2. Select: **EC2**
@@ -162,7 +162,7 @@ This is the detailed, portfolio-quality walkthrough showing your **AWS Solutions
 
 ---
 
-# ** 5.4 Launch EC2 Instance**
+# **5.4 Launch EC2 Instance**
 
 1. AWS Console → EC2 → Launch Instance
 2. Name: **Project02-KPI-Dashboard**
@@ -179,7 +179,7 @@ This is the detailed, portfolio-quality walkthrough showing your **AWS Solutions
 
 ---
 
-# ** 5.5 Connect to EC2 & Install Dependencies**
+# **5.5 Connect to EC2 & Install Dependencies**
 
 ```bash
 ssh -i yourkey.pem ubuntu@ec2-xx-xx-xx-xx.compute.amazonaws.com
@@ -219,7 +219,7 @@ pip install -r requirements.txt
 
 ---
 
-# ** 5.6 Make Streamlit App Use S3 Instead of Local Files**
+# **5.6 Make Streamlit App Use S3 Instead of Local Files**
 
 Modify your `app.py` so it loads:
 
@@ -238,7 +238,7 @@ The EC2 IAM Role automatically authorises S3 reads.
 
 ---
 
-# ** 5.7 Run Streamlit App on EC2**
+# **5.7 Run Streamlit App on EC2**
 
 ```bash
 streamlit run src/dashboard/app.py --server.port 8501 --server.address 0.0.0.0
@@ -252,7 +252,7 @@ http://ec2-xx-xx-xx-xx.compute.amazonaws.com:8501
 
 ---
 
-# ** 5.8 Run Streamlit Permanently (systemd Service)**
+# **5.8 Run Streamlit Permanently (systemd Service)**
 
 Create service file:
 
@@ -287,11 +287,11 @@ sudo systemctl start streamlit
 sudo systemctl status streamlit
 ```
 
-Now your dashboard runs **24/7** like a real production service.
+Now your dashboard runs **24/7** like a real production service. **Link to this particular production:** [Ecommerce Dashboard on EC2](http://18.203.85.230:8501/).
 
 ---
 
-# ** 5.9 Free-Tier Cost Controls**
+# **5.9 Free-Tier Cost Controls**
 
 | Service       | Cost                 |
 | ------------- | -------------------- |
@@ -308,7 +308,7 @@ sudo shutdown now
 
 ---
 
-# ** 6. KPI Examples Demonstrated in Dashboard**
+# **6. KPI Examples Demonstrated in Dashboard**
 
 ### 💰 **Daily Metrics**
 
@@ -332,7 +332,7 @@ sudo shutdown now
 
 ---
 
-# ** 7. How This Project Demonstrates Real Industry Skills**
+# **7. How This Project Demonstrates Real Industry Skills**
 
 ### ✔ Data Engineering
 
@@ -364,7 +364,7 @@ sudo shutdown now
 
 ---
 
-# ** 8. Reproducing Everything Locally**
+# **8. Reproducing Everything Locally**
 
 ### 1. Create venv
 
@@ -393,20 +393,10 @@ streamlit run src/dashboard/app.py
 
 ---
 
-# ** 9. Future Enhancements**
+# **9. Future Enhancements**
 
 * Replace EC2 with **AWS Lightsail** (still free-tier compatible)
 * Serve dashboard via **Nginx reverse proxy + SSL**
 * Add **customer lifetime value (CLV)** model
 * Introduce **Airflow** for scheduled ETL
 * Store processed outputs in **Parquet** for efficiency
-
----
-
-This README tries to demonstrate:
-
-* ETL
-* Data engineering
-* Analytics
-* Dashboarding
-* Cloud architecture
