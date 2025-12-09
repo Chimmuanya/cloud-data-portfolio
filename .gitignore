@@ -43,3 +43,7 @@ project-01-serverless-data-qc/.aws-sam/
 *.zip
 *.docx
 *.pdf
+project-02-kpi-dashboard/project2-app/venv/
+__pycache__/
+*.zip
+*.log
