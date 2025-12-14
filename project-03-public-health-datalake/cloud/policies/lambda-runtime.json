@@ -1,0 +1,67 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+
+    /* ---------- CloudWatch Logs ---------- */
+    {
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "*"
+    },
+
+    /* ---------- S3 Raw + Clean + Athena Results ---------- */
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::${RAW_BUCKET}",
+        "arn:aws:s3:::${CLEAN_BUCKET}",
+        "arn:aws:s3:::${ATHENA_RESULTS_BUCKET}"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::${RAW_BUCKET}/*",
+        "arn:aws:s3:::${CLEAN_BUCKET}/*",
+        "arn:aws:s3:::${ATHENA_RESULTS_BUCKET}/*"
+      ]
+    },
+
+    /* ---------- Glue (Athena dependency) ---------- */
+    {
+      "Effect": "Allow",
+      "Action": [
+        "glue:GetDatabase",
+        "glue:GetDatabases",
+        "glue:GetTable",
+        "glue:GetTables",
+        "glue:GetPartition",
+        "glue:GetPartitions"
+      ],
+      "Resource": "*"
+    },
+
+    /* ---------- Athena (future-safe) ---------- */
+    {
+      "Effect": "Allow",
+      "Action": [
+        "athena:StartQueryExecution",
+        "athena:GetQueryExecution",
+        "athena:GetQueryResults"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

@@ -1,0 +1,236 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Description: >
+  Project 03 — Public Health Data Lake
+  Serverless raw → clean pipeline with WHO GHO, World Bank,
+  Athena analytics, and dashboard evidence.
+
+# -------------------------------------------------------------------
+# PARAMETERS
+# -------------------------------------------------------------------
+Parameters:
+  ProjectName:
+    Type: String
+    Default: project03
+    Description: Short project identifier
+
+# -------------------------------------------------------------------
+# GLOBALS
+# -------------------------------------------------------------------
+Globals:
+  Function:
+    Runtime: python3.11
+    Timeout: 300
+    MemorySize: 512
+    Tracing: Active
+    Environment:
+      Variables:
+        RAW_PREFIX: public-health/raw/
+        CLEAN_PREFIX: clean/
+
+# -------------------------------------------------------------------
+# RESOURCES
+# -------------------------------------------------------------------
+Resources:
+
+  # ===============================================================
+  # S3 BUCKETS
+  # ===============================================================
+  RawBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${AWS::AccountId}-${ProjectName}-raw'
+      VersioningConfiguration: { Status: Enabled }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  CleanBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${AWS::AccountId}-${ProjectName}-clean'
+      VersioningConfiguration: { Status: Enabled }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  AthenaResultsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${AWS::AccountId}-${ProjectName}-athena-results'
+      VersioningConfiguration: { Status: Enabled }
+      LifecycleConfiguration:
+        Rules:
+          - Id: CleanupOldResults
+            Status: Enabled
+            ExpirationInDays: 90
+
+  # ===============================================================
+  # IAM — PERMISSIONS BOUNDARY
+  # ===============================================================
+  LambdaPermissionsBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub '${ProjectName}-permissions-boundary'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:*
+              - logs:*
+              - athena:*
+              - glue:Get*
+            Resource: "*"
+
+          - Effect: Deny
+            Action:
+              - iam:*
+              - sts:AssumeRole
+            Resource: "*"
+
+  # ===============================================================
+  # IAM — LAMBDA EXECUTION ROLE
+  # ===============================================================
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-lambda-exec'
+      PermissionsBoundary: !Ref LambdaPermissionsBoundary
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+      Policies:
+        - PolicyName: Project03LambdaRuntime
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+
+              # ---------- S3 Buckets ----------
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource:
+                  - !GetAtt RawBucket.Arn
+                  - !GetAtt CleanBucket.Arn
+                  - !GetAtt AthenaResultsBucket.Arn
+
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource:
+                  - !Sub '${RawBucket.Arn}/*'
+                  - !Sub '${CleanBucket.Arn}/*'
+                  - !Sub '${AthenaResultsBucket.Arn}/*'
+
+              # ---------- Glue (Athena dependency) ----------
+              - Effect: Allow
+                Action:
+                  - glue:GetDatabase
+                  - glue:GetDatabases
+                  - glue:GetTable
+                  - glue:GetTables
+                  - glue:GetPartition
+                  - glue:GetPartitions
+                Resource: "*"
+
+              # ---------- Athena (future-safe) ----------
+              - Effect: Allow
+                Action:
+                  - athena:StartQueryExecution
+                  - athena:GetQueryExecution
+                  - athena:GetQueryResults
+                Resource: "*"
+
+  # ===============================================================
+  # INGEST LAMBDA
+  # ===============================================================
+  IngestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-ingest'
+      CodeUri: ../../src/ingest/
+      Handler: app.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          RAW_BUCKET: !Ref RawBucket
+      Events:
+        DailyTrigger:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 day)
+            Enabled: true
+
+  # ===============================================================
+  # TRANSFORM LAMBDA
+  # ===============================================================
+  TransformFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-transform'
+      CodeUri: ../../src/transform/
+      Handler: app.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 900
+      MemorySize: 1024
+      Environment:
+        Variables:
+          RAW_BUCKET: !Ref RawBucket
+          CLEAN_BUCKET: !Ref CleanBucket
+
+  # ===============================================================
+  # S3 → LAMBDA INVOCATION
+  # ===============================================================
+  TransformInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TransformFunction
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !GetAtt RawBucket.Arn
+
+  RawBucketNotification:
+    Type: AWS::S3::BucketNotification
+    Properties:
+      Bucket: !Ref RawBucket
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt TransformFunction.Arn
+
+# -------------------------------------------------------------------
+# OUTPUTS
+# -------------------------------------------------------------------
+Outputs:
+  RawBucket:
+    Value: !Ref RawBucket
+    Description: Raw data bucket
+
+  CleanBucket:
+    Value: !Ref CleanBucket
+    Description: Clean Parquet bucket
+
+  AthenaResultsBucket:
+    Value: !Ref AthenaResultsBucket
+    Description: Athena query results
+
+  IngestLambda:
+    Value: !Ref IngestFunction
+
+  TransformLambda:
+    Value: !Ref TransformFunction
