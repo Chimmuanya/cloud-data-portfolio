@@ -2,13 +2,29 @@
 src/common/config.py
 
 Central configuration for Project 3.
+
+Single source of truth for:
+- execution mode (LOCAL / CLOUD)
+- AWS + local paths
+- prefixes and manifests
+- evidence outputs
+
 Used by ingest, ETL, dashboard, and scripts.
 """
+
+from __future__ import annotations
 
 import os
 from pathlib import Path
 from typing import Optional
 
+# ─────────────────────────────────────────────────────────────
+# Execution mode
+# ─────────────────────────────────────────────────────────────
+
+MODE = os.getenv("MODE", "LOCAL").upper()
+IS_LOCAL = MODE == "LOCAL"
+IS_CLOUD = MODE == "CLOUD"
 
 # ─────────────────────────────────────────────────────────────
 # Core helper
@@ -17,6 +33,8 @@ from typing import Optional
 def get_env(name: str, default: Optional[str] = None) -> str:
     """
     Fetch environment variable or fail fast.
+
+    Use ONLY for values that must exist at runtime.
     """
     value = os.environ.get(name, default)
     if value is None:
@@ -28,49 +46,65 @@ def get_env(name: str, default: Optional[str] = None) -> str:
 # Runtime context
 # ─────────────────────────────────────────────────────────────
 
-AWS_REGION = os.environ.get("AWS_REGION", "eu-west-1")
+AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
 IS_LAMBDA = "AWS_LAMBDA_FUNCTION_NAME" in os.environ
 
+# ─────────────────────────────────────────────────────────────
+# Local filesystem paths (MODE=LOCAL)
+# ─────────────────────────────────────────────────────────────
+
+LOCAL_DATA_DIR = Path("data")
+LOCAL_RAW_DIR = LOCAL_DATA_DIR / "raw"
+LOCAL_CLEAN_DIR = LOCAL_DATA_DIR / "clean"
+
+LOCAL_RAW_DIR.mkdir(parents=True, exist_ok=True)
+LOCAL_CLEAN_DIR.mkdir(parents=True, exist_ok=True)
 
 # ─────────────────────────────────────────────────────────────
-# Buckets (used by ingest + ETL)
+# Buckets (MODE=CLOUD)
 # ─────────────────────────────────────────────────────────────
 
-RAW_BUCKET = os.environ.get("RAW_BUCKET")
-CLEAN_BUCKET = os.environ.get("CLEAN_BUCKET")
+RAW_BUCKET = os.getenv("RAW_BUCKET")
+CLEAN_BUCKET = os.getenv("CLEAN_BUCKET")
 
+# Prefixes always normalized to end with "/"
 RAW_PREFIX = (
-    os.environ.get("RAW_PREFIX", "public-health/raw/")
+    os.getenv("RAW_PREFIX", "public-health/raw")
     .strip("/") + "/"
 )
 
 CLEAN_PREFIX = (
-    os.environ.get("CLEAN_PREFIX", "public-health/clean/")
+    os.getenv("CLEAN_PREFIX", "public-health/clean")
     .strip("/") + "/"
 )
 
-
 # ─────────────────────────────────────────────────────────────
-# Evidence paths (used by dashboard + queries)
+# Project structure
 # ─────────────────────────────────────────────────────────────
 
 PROJECT_ROOT = Path(
-    os.environ.get("PROJECT_ROOT", Path.cwd())
-)
+    os.getenv("PROJECT_ROOT", Path.cwd())
+).resolve()
+
+# ─────────────────────────────────────────────────────────────
+# Evidence paths (used by dashboard + analytics)
+# ─────────────────────────────────────────────────────────────
 
 EVIDENCE_DIR = Path(
-    os.environ.get("EVIDENCE_DIR", PROJECT_ROOT / "evidence")
+    os.getenv("EVIDENCE_DIR", PROJECT_ROOT / "evidence")
 )
 
 ATHENA_EVIDENCE_DIR = EVIDENCE_DIR / "athena"
 DASHBOARD_EVIDENCE_DIR = EVIDENCE_DIR / "dashboard"
 
+ATHENA_EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
+DASHBOARD_EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
 
 # ─────────────────────────────────────────────────────────────
 # ETL manifest
 # ─────────────────────────────────────────────────────────────
 
-ETL_MANIFEST_KEY = os.environ.get(
+ETL_MANIFEST_KEY = os.getenv(
     "ETL_MANIFEST_KEY",
-    f"{CLEAN_PREFIX}manifest/etl_manifest.json"
+    f"{CLEAN_PREFIX}manifest/etl_manifest.json",
 )

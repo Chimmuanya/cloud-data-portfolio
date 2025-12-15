@@ -1,62 +1,108 @@
 #!/usr/bin/env python3
 """
-Local DuckDB analytics runner for Project 3.
+scripts/athena/run_queries_local.py
 
-Consumes:
-- local_data/clean/*.parquet
-- local_sql/duckdb/queries/*.sql
+LOCAL analytics runner using DuckDB.
 
-Produces:
-- evidence/athena/*.csv
+- Mirrors Athena table layout
+- Discovers datasets automatically from data/clean/
+- Executes SQL templates from local_sql/
+- Writes query results to evidence/athena/
+
+This script is LOCAL-ONLY and has no AWS dependencies.
 """
 
-import duckdb
 from pathlib import Path
-from datetime import datetime
+import duckdb
+import json
+import sys
 
-CLEAN_DIR = Path("local_data/clean")
-SQL_DIR = Path("local_sql/duckdb/queries")
-OUT_DIR = Path("evidence/athena")
-
-OUT_DIR.mkdir(parents=True, exist_ok=True)
-
-con = duckdb.connect(database=":memory:")
-
-# ------------------------------------------------------------------
-# Register Parquet datasets
-# ------------------------------------------------------------------
-print("Registering Parquet datasets")
-
-con.execute(f"""
-CREATE VIEW who_indicators AS
-SELECT * FROM read_parquet('{CLEAN_DIR}/who/**/*.parquet', hive_partitioning=1);
-""")
-
-con.execute(f"""
-CREATE VIEW worldbank_indicators AS
-SELECT * FROM read_parquet('{CLEAN_DIR}/worldbank/**/*.parquet', hive_partitioning=1);
-""")
-
-con.execute(f"""
-CREATE VIEW who_outbreaks AS
-SELECT * FROM read_parquet('{CLEAN_DIR}/who_outbreaks/**/*.parquet');
-""")
+from common.config import (
+    LOCAL_CLEAN_DIR,
+    PROJECT_ROOT,
+    ATHENA_EVIDENCE_DIR,
+)
+from common.logging import setup_logging
 
 # ------------------------------------------------------------------
-# Run SQL queries
+# Logging
 # ------------------------------------------------------------------
-ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+logger = setup_logging(__name__)
+logger.info("Running DuckDB local analytics")
+
+# ------------------------------------------------------------------
+# Paths
+# ------------------------------------------------------------------
+SQL_DIR = PROJECT_ROOT / "local_sql"
+ATHENA_EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
+
+# ------------------------------------------------------------------
+# DuckDB connection
+# ------------------------------------------------------------------
+con = duckdb.connect()
+
+# ------------------------------------------------------------------
+# Register Parquet datasets as DuckDB views
+# ------------------------------------------------------------------
+logger.info("Registering Parquet datasets")
+
+if not LOCAL_CLEAN_DIR.exists():
+    logger.error("LOCAL_CLEAN_DIR does not exist: %s", LOCAL_CLEAN_DIR)
+    sys.exit(1)
+
+registered = []
+
+for endpoint_dir in LOCAL_CLEAN_DIR.iterdir():
+    if not endpoint_dir.is_dir():
+        continue
+
+    endpoint = endpoint_dir.name
+    parquet_glob = str(endpoint_dir / "year=*/data.parquet")
+
+    try:
+        con.execute(f"""
+            CREATE OR REPLACE VIEW {endpoint} AS
+            SELECT * FROM read_parquet('{parquet_glob}')
+        """)
+        registered.append(endpoint)
+        logger.info("Registered dataset: %s", endpoint)
+    except Exception as exc:
+        logger.warning("Skipped %s (no parquet?): %s", endpoint, exc)
+
+if not registered:
+    logger.error("No datasets registered — aborting SQL execution")
+    sys.exit(1)
+
+# ------------------------------------------------------------------
+# Execute SQL templates
+# ------------------------------------------------------------------
+logger.info("Executing SQL templates")
+
+if not SQL_DIR.exists():
+    logger.warning("No SQL directory found: %s", SQL_DIR)
+    sys.exit(0)
 
 for sql_file in sorted(SQL_DIR.glob("*.sql")):
-    name = sql_file.stem
-    print(f"Running {name}")
+    logger.info("Running query: %s", sql_file.name)
 
-    query = sql_file.read_text()
-    df = con.execute(query).df()
+    sql = sql_file.read_text()
 
-    out = OUT_DIR / f"{name}-{ts}.csv"
-    df.to_csv(out, index=False)
+    try:
+        df = con.execute(sql).fetchdf()
+    except Exception as exc:
+        logger.error("Query failed: %s → %s", sql_file.name, exc)
+        continue
 
-    print(f"  → wrote {out}")
+    out_path = ATHENA_EVIDENCE_DIR / f"{sql_file.stem}.json"
+    out_path.write_text(
+        json.dumps(df.to_dict(orient="records"), indent=2)
+    )
 
-print("\nLocal DuckDB analytics completed.")
+    logger.info(
+        "Query %s produced %d rows → %s",
+        sql_file.name,
+        len(df),
+        out_path,
+    )
+
+logger.info("DuckDB local analytics complete")

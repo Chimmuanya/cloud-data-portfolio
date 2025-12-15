@@ -1,136 +1,196 @@
-# src/dashboard/charts.py
-
 import plotly.express as px
-from plotly.subplots import make_subplots
 import plotly.graph_objects as go
+import pandas as pd
 
 DEFAULT_THEME = "plotly_white"
 
+# ------------------------------------------------------------------
+# Internal helpers
+# ------------------------------------------------------------------
+def _require_columns(df: pd.DataFrame, required: list, chart_name: str):
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise ValueError(
+            f"{chart_name}: missing required columns: {missing}"
+        )
 
-# ─────────────────────────────────────────────────────────────
-# Line chart (time series, trends)
-# ─────────────────────────────────────────────────────────────
+
+def _clean_numeric(df: pd.DataFrame, cols: list) -> pd.DataFrame:
+    out = df.copy()
+    for c in cols:
+        out[c] = pd.to_numeric(out[c], errors="coerce")
+    return out.dropna(subset=cols)
+
+
+# ------------------------------------------------------------------
+# Generic line chart (USED BY CHARTS 1–4)
+# ------------------------------------------------------------------
 def line_chart(
-    df,
+    df: pd.DataFrame,
     *,
-    x,
-    y,
-    color=None,
-    title,
-    y_label,
+    x: str,
+    y: str,
+    title: str,
+    y_label: str,
+    color: str | None = None,
 ):
+    required = [x, y]
+    if color:
+        required.append(color)
+
+    _require_columns(df, required, "line_chart")
+
+    clean_df = _clean_numeric(df, [x, y])
+
     fig = px.line(
-        df,
+        clean_df,
         x=x,
         y=y,
         color=color,
-        hover_data={
-            x: True,
-            y: ":.2f"
-        },
     )
+
     fig.update_layout(
         title=title,
         xaxis_title=x.capitalize(),
         yaxis_title=y_label,
         template=DEFAULT_THEME,
-        legend_title_text=color.capitalize() if color else None,
     )
+
     return fig
 
 
-# ─────────────────────────────────────────────────────────────
-# Heatmap (burden distribution)
-# ─────────────────────────────────────────────────────────────
-def heatmap(
-    df,
+# ------------------------------------------------------------------
+# Chart 5 — Nigeria vs SSA life expectancy (SPECIAL CASE)
+# ------------------------------------------------------------------
+def nigeria_vs_ssa_life_expectancy(
     *,
-    title,
+    countries: pd.DataFrame,
+    reference: pd.DataFrame,
+    highlight_country: str,
+    peer_region: str,
+    year_range: list[int],
+    title: str,
+    y_label: str,
+    show_peer_background: bool = True,
+    show_reference_line: bool = True,
 ):
-    fig = px.imshow(
-        df,
-        color_continuous_scale="YlOrRd",
-        aspect="auto",
+    required_cols = ["country_code", "year", "value"]
+    _require_columns(countries, required_cols, "nigeria_vs_ssa_life_expectancy")
+    _require_columns(reference, ["year", "ssa_avg"], "nigeria_vs_ssa_life_expectancy")
+
+    start, end = year_range
+
+    countries = countries[
+        (countries["year"] >= start) &
+        (countries["year"] <= end)
+    ]
+
+    reference = reference[
+        (reference["year"] >= start) &
+        (reference["year"] <= end)
+    ]
+
+    fig = go.Figure()
+
+    # Peer countries (context)
+    if show_peer_background:
+        for code in countries["country_code"].unique():
+            if code == highlight_country:
+                continue
+
+            cdf = countries[countries["country_code"] == code]
+
+            fig.add_trace(
+                go.Scatter(
+                    x=cdf["year"],
+                    y=cdf["value"],
+                    mode="lines",
+                    line=dict(color="rgba(180,180,180,0.4)", width=1),
+                    showlegend=False,
+                    hoverinfo="skip",
+                )
+            )
+
+    # Highlight country (Nigeria)
+    nga = countries[countries["country_code"] == highlight_country]
+
+    fig.add_trace(
+        go.Scatter(
+            x=nga["year"],
+            y=nga["value"],
+            mode="lines+markers",
+            name="Nigeria",
+            line=dict(color="#d62728", width=3),
+            marker=dict(size=6),
+        )
     )
+
+    # SSA average reference
+    if show_reference_line:
+        fig.add_trace(
+            go.Scatter(
+                x=reference["year"],
+                y=reference["ssa_avg"],
+                mode="lines",
+                name=f"{peer_region} Average",
+                line=dict(color="#1f77b4", width=3, dash="dash"),
+            )
+        )
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="Year",
+        yaxis_title=y_label,
+        template=DEFAULT_THEME,
+        legend=dict(
+            orientation="h",
+            y=1.05,
+            x=0,
+        ),
+        margin=dict(l=60, r=40, t=80, b=60),
+    )
+
+    return fig
+
+
+# ------------------------------------------------------------------
+# Heatmap
+# ------------------------------------------------------------------
+def heatmap(
+    df: pd.DataFrame,
+    *,
+    title: str,
+    index_col: str = "country_code",
+    column_col: str = "year",
+    value_col: str = "value",
+):
+    _require_columns(df, [index_col, column_col, value_col], "heatmap")
+
+    clean_df = _clean_numeric(df, [column_col, value_col])
+
+    pivot = (
+        clean_df
+        .pivot_table(
+            index=index_col,
+            columns=column_col,
+            values=value_col,
+            aggfunc="mean",
+        )
+        .sort_index(axis=1)
+    )
+
+    fig = px.imshow(
+        pivot,
+        aspect="auto",
+        color_continuous_scale="YlOrRd",
+    )
+
     fig.update_layout(
         title=title,
         template=DEFAULT_THEME,
         coloraxis_colorbar_title="Value",
-    )
-    return fig
-
-
-# ─────────────────────────────────────────────────────────────
-# Scatter (capacity vs outcome)
-# ─────────────────────────────────────────────────────────────
-def scatter(
-    df,
-    *,
-    x,
-    y,
-    size=None,
-    color=None,
-    title,
-    x_label,
-    y_label,
-):
-    fig = px.scatter(
-        df,
-        x=x,
-        y=y,
-        size=size,
-        color=color,
-        hover_name="country_name",
-        trendline="lowess",
-    )
-    fig.update_layout(
-        title=title,
-        xaxis_title=x_label,
-        yaxis_title=y_label,
-        template=DEFAULT_THEME,
-        legend_title_text=color.capitalize() if color else None,
-    )
-    return fig
-
-
-# ─────────────────────────────────────────────────────────────
-# Dual-axis bar + dot (data quality view)
-# ─────────────────────────────────────────────────────────────
-def dual_axis_bar_dot(
-    df,
-    *,
-    title,
-):
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-
-    fig.add_bar(
-        x=df["country_name"],
-        y=df["cholera_cases"],
-        name="Reported Cholera Cases",
-    )
-
-    fig.add_scatter(
-        x=df["country_name"],
-        y=df["missing_fraction"],
-        name="Missing Data Fraction",
-        mode="markers",
-        secondary_y=True,
-    )
-
-    fig.update_layout(
-        title=title,
-        template=DEFAULT_THEME,
-        legend_title_text="Metric",
-    )
-
-    fig.update_yaxes(
-        title_text="Reported Cholera Cases",
-        secondary_y=False,
-    )
-    fig.update_yaxes(
-        title_text="Missing Fraction",
-        secondary_y=True,
-        tickformat=".0%",
+        xaxis_title="Year",
+        yaxis_title="Country",
     )
 
     return fig
