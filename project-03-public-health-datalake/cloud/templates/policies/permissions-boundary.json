@@ -1,0 +1,32 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+
+    {
+      "Sid": "AllowOnlyExpectedServices",
+      "Effect": "Allow",
+      "Action": [
+        "s3:*",
+        "lambda:*",
+        "logs:*",
+        "athena:*",
+        "glue:Get*"
+      ],
+      "Resource": "*"
+    },
+
+    {
+      "Sid": "DenyPrivilegeEscalation",
+      "Effect": "Deny",
+      "Action": [
+        "iam:CreateUser",
+        "iam:CreateAccessKey",
+        "iam:AttachUserPolicy",
+        "iam:AttachRolePolicy",
+        "iam:PutRolePolicy",
+        "sts:AssumeRole"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

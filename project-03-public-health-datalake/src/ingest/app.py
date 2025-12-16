@@ -11,6 +11,7 @@ import json
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, List
+from pathlib import Path
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -20,8 +21,9 @@ import boto3
 from common.config import (
     RAW_BUCKET,
     RAW_PREFIX,
-    CLEAN_BUCKET,
     AWS_REGION,
+    MODE,
+    LOCAL_RAW_DIR,
 )
 from common.logging import setup_logging
 
@@ -29,9 +31,10 @@ from common.logging import setup_logging
 # Logging
 # ─────────────────────────────────────────────────────────────
 logger = setup_logging(__name__)
+logger.info("Ingest starting in MODE=%s", MODE)
 
 # ─────────────────────────────────────────────────────────────
-# AWS client
+# AWS client (used only in CLOUD mode)
 # ─────────────────────────────────────────────────────────────
 s3 = boto3.client("s3", region_name=AWS_REGION)
 
@@ -117,44 +120,72 @@ def _detect_extension(content_type: str | None) -> str:
 # Core ingest logic
 # ─────────────────────────────────────────────────────────────
 
-def fetch_and_store_to_s3(endpoint: Dict[str, str]) -> Dict[str, Any]:
+def fetch_and_store(endpoint: Dict[str, str]) -> Dict[str, Any]:
     """
-    Fetch endpoint and write raw payload to S3:
-    s3://<RAW_BUCKET>/<RAW_PREFIX>/<dataset>/<timestamp>-<uuid>.{json|csv}
+    Fetch endpoint and store raw payload.
+
+    CLOUD:
+      s3://<RAW_BUCKET>/<RAW_PREFIX>/<dataset>/<timestamp>-<uuid>.{json|csv}
+
+    LOCAL:
+      <LOCAL_RAW_DIR>/<dataset>_<timestamp>-<uuid>.{json|csv}
     """
     name = endpoint["name"]
     url = endpoint["url"]
 
     logger.info("Fetching dataset=%s", name)
 
-    resp = HTTP.get(url, timeout=60)
+    resp = HTTP.get(url, timeout=(5, 60), stream=True)
 
     if not resp.ok:
         raise RuntimeError(f"HTTP {resp.status_code} for {name} after retries")
 
+    content = resp.content
+
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     ext = _detect_extension(resp.headers.get("Content-Type"))
     filename = f"{ts}-{uuid.uuid4().hex}.{ext}"
+
     key = f"{RAW_PREFIX}{name}/{filename}"
 
+    # ─────────────── LOCAL STORAGE ───────────────
+    if MODE == "LOCAL":
+        LOCAL_RAW_DIR.mkdir(parents=True, exist_ok=True)
+        local_path = LOCAL_RAW_DIR / f"{name}_{filename}"
+        local_path.write_bytes(content)
+
+        logger.info(
+            "Stored dataset=%s bytes=%s local_path=%s",
+            name,
+            f"{len(content):,}",
+            local_path,
+        )
+
+        return {
+            "dataset": name,
+            "local_path": str(local_path),
+            "bytes": len(content),
+        }
+
+    # ─────────────── CLOUD STORAGE ───────────────
     s3.put_object(
         Bucket=RAW_BUCKET,
         Key=key,
-        Body=resp.content,
+        Body=content,
         ContentType=resp.headers.get("Content-Type", "application/json"),
     )
 
     logger.info(
         "Stored dataset=%s bytes=%s s3_key=%s",
         name,
-        f"{len(resp.content):,}",
+        f"{len(content):,}",
         key,
     )
 
     return {
         "dataset": name,
         "s3_key": key,
-        "bytes": len(resp.content),
+        "bytes": len(content),
     }
 
 
@@ -167,7 +198,7 @@ def lambda_handler(event, context):
 
     for ep in ENDPOINTS:
         try:
-            results.append(fetch_and_store_to_s3(ep))
+            results.append(fetch_and_store(ep))
         except Exception as exc:
             logger.exception("FAILED ingest dataset=%s", ep["name"])
             results.append({
@@ -186,10 +217,10 @@ def lambda_handler(event, context):
 
 
 # ─────────────────────────────────────────────────────────────
-# Local execution (Step 2)
+# Local execution
 # ─────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    logger.info("Running ingest in LOCAL mode")
-    out = lambda_handler({}, None)
-    print(json.dumps(json.loads(out["body"]), indent=2))
+    logger.info("Running ingest in LOCAL execution mode")
+    output = lambda_handler({}, None)
+    print(json.dumps(json.loads(output["body"]), indent=2))
