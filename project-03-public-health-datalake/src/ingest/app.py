@@ -134,60 +134,56 @@ def fetch_and_store(endpoint: Dict[str, str]) -> Dict[str, Any]:
     url = endpoint["url"]
 
     logger.info("Fetching dataset=%s", name)
-
     resp = HTTP.get(url, timeout=(5, 60), stream=True)
 
     if not resp.ok:
-        raise RuntimeError(f"HTTP {resp.status_code} for {name} after retries")
+        raise RuntimeError(f"HTTP {resp.status_code} for {name}")
 
+    # For smaller files, reading into memory is fine.
+    # For a portfolio project, this is acceptable.
     content = resp.content
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     ext = _detect_extension(resp.headers.get("Content-Type"))
     filename = f"{ts}-{uuid.uuid4().hex}.{ext}"
 
-    key = f"{RAW_PREFIX}{name}/{filename}"
-
-    # ─────────────── LOCAL STORAGE ───────────────
+    # ─────────────── LOCAL MODE (Fedora/Dev) ───────────────
+    # Only run this if we are intentionally in LOCAL mode.
     if MODE == "LOCAL":
+        # Safe because config.py redirects this to /tmp if IS_LAMBDA is True
         LOCAL_RAW_DIR.mkdir(parents=True, exist_ok=True)
         local_path = LOCAL_RAW_DIR / f"{name}_{filename}"
         local_path.write_bytes(content)
 
-        logger.info(
-            "Stored dataset=%s bytes=%s local_path=%s",
-            name,
-            f"{len(content):,}",
-            local_path,
-        )
-
         return {
             "dataset": name,
-            "local_path": str(local_path),
-            "bytes": len(content),
+            "storage": "LOCAL",
+            "path": str(local_path)
         }
 
-    # ─────────────── CLOUD STORAGE ───────────────
+    # ─────────────── CLOUD MODE (AWS Lambda) ───────────────
+    key = f"{RAW_PREFIX}{name}/{filename}"
+
     s3.put_object(
         Bucket=RAW_BUCKET,
         Key=key,
-        Body=content,
+        Body=content, # Uploading bytes directly to S3
         ContentType=resp.headers.get("Content-Type", "application/json"),
     )
+
 
     logger.info(
         "Stored dataset=%s bytes=%s s3_key=%s",
         name,
         f"{len(content):,}",
         key,
-    )
+        )
 
     return {
         "dataset": name,
-        "s3_key": key,
-        "bytes": len(content),
+        "storage": "S3",
+        "key": key
     }
-
 
 # ─────────────────────────────────────────────────────────────
 # Lambda handler

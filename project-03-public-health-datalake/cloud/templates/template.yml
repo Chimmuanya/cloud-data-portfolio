@@ -112,6 +112,50 @@ Resources:
           RAW_BUCKET: !Sub '${AWS::AccountId}-${ProjectName}-raw'
           CLEAN_BUCKET: !Sub '${AWS::AccountId}-${ProjectName}-clean'
 
+    DashboardFunction:
+      Type: AWS::Serverless::Function
+      Properties:
+        FunctionName: !Sub '${ProjectName}-dashboard'
+        CodeUri: ../../../src/dashboard/
+        Handler: app.lambda_handler
+        Role: !GetAtt LambdaExecutionRole.Arn
+        Timeout: 300
+        MemorySize: 1024
+        Environment:
+        Variables:
+          MODE: CLOUD
+          CLEAN_BUCKET: !Ref CleanBucket
+          CLEAN_PREFIX: clean/
+          EVIDENCE_BUCKET: !Ref AthenaResultsBucket
+        Events:
+          CleanDataReady:
+            Type: S3
+            Properties:
+            Bucket: !Ref CleanBucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: "__SUCCESS__/"
+
+    AthenaRunnerFunction:
+      Type: AWS::Serverless::Function
+      Properties:
+        FunctionName: !Sub '${ProjectName}-athena-runner'
+        CodeUri: ../../../src/athena_runner/
+        Handler: app.lambda_handler
+        Role: !GetAtt LambdaExecutionRole.Arn
+        Timeout: 900
+        MemorySize: 512
+        Environment:
+        Variables:
+          ATHENA_DB: project03_db
+          EVIDENCE_BUCKET: !Ref AthenaResultsBucket
+          EVIDENCE_PREFIX: athena/
+          SQL_BASE_PREFIX: sql/queries/
+
+
   # ===============================================================
   # BUCKETS — Created after Lambdas, with notification config
   # ===============================================================

@@ -79,64 +79,58 @@ def nigeria_vs_ssa_life_expectancy(
     _require_columns(reference, ["year", "ssa_avg"], "nigeria_vs_ssa_life_expectancy")
 
     start, end = year_range
+    countries = countries[countries["year"].between(start, end)]
+    reference = reference[reference["year"].between(start, end)]
 
-    countries = countries[
-        (countries["year"] >= start) &
-        (countries["year"] <= end)
-    ]
-
-    reference = reference[
-        (reference["year"] >= start) &
-        (reference["year"] <= end)
-    ]
-
+    # 1. Initialize Figure
     fig = go.Figure()
 
-    # Peer countries (context)
+    # 2. Optimized Peer Background (Vectorized)
     if show_peer_background:
-        for code in countries["country_code"].unique():
-            if code == highlight_country:
-                continue
+        peers = countries[countries["country_code"] != highlight_country]
 
-            cdf = countries[countries["country_code"] == code]
+        # We use px.line just to generate the traces efficiently,
+        # then we extract them and add them to our main figure.
+        tmp_fig = px.line(
+            peers,
+            x="year",
+            y="value",
+            line_group="country_code",
+            color_discrete_sequence=["rgba(180,180,180,0.3)"] # Light gray
+        )
 
-            fig.add_trace(
-                go.Scatter(
-                    x=cdf["year"],
-                    y=cdf["value"],
-                    mode="lines",
-                    line=dict(color="rgba(180,180,180,0.4)", width=1),
-                    showlegend=False,
-                    hoverinfo="skip",
-                )
-            )
+        for trace in tmp_fig.data:
+            trace.showlegend = False
+            trace.hoverinfo = "skip"
+            trace.line.width = 1
+            fig.add_trace(trace)
 
-    # Highlight country (Nigeria)
+    # 3. Highlight Country (Nigeria)
     nga = countries[countries["country_code"] == highlight_country]
-
     fig.add_trace(
         go.Scatter(
             x=nga["year"],
             y=nga["value"],
             mode="lines+markers",
-            name="Nigeria",
-            line=dict(color="#d62728", width=3),
-            marker=dict(size=6),
+            name=highlight_country,
+            line=dict(color="#d62728", width=4),
+            marker=dict(size=8),
         )
     )
 
-    # SSA average reference
+    # 4. Reference Line (SSA Average)
     if show_reference_line:
         fig.add_trace(
             go.Scatter(
                 x=reference["year"],
                 y=reference["ssa_avg"],
                 mode="lines",
-                name=f"{peer_region} Average",
+                name=f"{peer_region} Avg",
                 line=dict(color="#1f77b4", width=3, dash="dash"),
             )
         )
 
+    # ... update_layout remains the same ...
     fig.update_layout(
         title=title,
         xaxis_title="Year",

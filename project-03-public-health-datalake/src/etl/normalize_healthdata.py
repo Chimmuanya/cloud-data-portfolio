@@ -15,6 +15,7 @@ import hashlib
 from datetime import datetime, timezone
 from typing import Dict, Any, Callable
 from pathlib import Path
+import urllib.parse  # <--- NEW IMPORT
 
 import boto3
 import pandas as pd
@@ -29,6 +30,7 @@ from common.config import (
     AWS_REGION,
     LOCAL_RAW_DIR,
     LOCAL_CLEAN_DIR,
+    LOCAL_DATA_DIR,  # <--- Add this import
 )
 from common.logging import setup_logging
 
@@ -46,7 +48,7 @@ s3 = boto3.client("s3", region_name=AWS_REGION)
 # ------------------------------------------------------------------
 # LOCAL paths
 # ------------------------------------------------------------------
-LOCAL_MANIFEST_PATH = Path("data/etl_manifest.json")
+LOCAL_MANIFEST_PATH = LOCAL_DATA_DIR / "etl_manifest.json"
 
 # ------------------------------------------------------------------
 # Utilities
@@ -63,6 +65,7 @@ def sha256_bytes(data: bytes) -> str:
 # ------------------------------------------------------------------
 def load_manifest() -> Dict[str, Any]:
     if MODE == "LOCAL":
+        # This will now look in /tmp/data/etl_manifest.json in Lambda
         if not LOCAL_MANIFEST_PATH.exists():
             return {"processed": {}}
         return json.loads(LOCAL_MANIFEST_PATH.read_text())
@@ -243,9 +246,13 @@ ROUTERS = {
 # ------------------------------------------------------------------
 def lambda_handler(event, context):
     try:
-        raw_key = event["Records"][0]["s3"]["object"]["key"]
+        # Extract and DECODE the S3 key
+        raw_key_encoded = event["Records"][0]["s3"]["object"]["key"]
+        raw_key = urllib.parse.unquote_plus(raw_key_encoded)
     except Exception:
         return {"statusCode": 400, "body": "Invalid S3 event"}
+
+    logger.info("Triggered ETL for S3 Key: %s", raw_key)
 
     for name, parser in ROUTERS.items():
         if name in raw_key:

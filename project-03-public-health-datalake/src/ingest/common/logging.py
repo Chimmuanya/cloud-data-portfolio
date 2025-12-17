@@ -7,30 +7,32 @@ Standard logging configuration for Project 3.
 import logging
 import os
 
-
-DEFAULT_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
-
+# Detect if we are in Lambda to adjust formatting
+IS_LAMBDA = os.environ.get("AWS_LAMBDA_FUNCTION_NAME") is not None
+DEFAULT_LEVEL_STR = os.environ.get("LOG_LEVEL", "INFO").upper()
 
 def setup_logging(name: str) -> logging.Logger:
-    """
-    Create a configured logger.
-
-    Usage:
-        logger = setup_logging(__name__)
-    """
     logger = logging.getLogger(name)
 
     if logger.handlers:
-        # Prevent duplicate handlers (important for Lambda)
         return logger
 
-    level = getattr(logging, DEFAULT_LEVEL, logging.INFO)
-    logger.setLevel(level)
+    # Validate Log Level
+    level = getattr(logging, DEFAULT_LEVEL_STR, logging.INFO)
+    if not isinstance(level, int):
+        level = logging.INFO
 
+    logger.setLevel(level)
     handler = logging.StreamHandler()
 
+    # CLOUD FIX: Remove asctime if in Lambda because CloudWatch adds it automatically
+    if IS_LAMBDA:
+        log_format = "%(levelname)s | %(name)s | %(message)s"
+    else:
+        log_format = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+
     formatter = logging.Formatter(
-        fmt="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+        fmt=log_format,
         datefmt="%Y-%m-%dT%H:%M:%SZ",
     )
 

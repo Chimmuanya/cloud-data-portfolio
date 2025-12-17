@@ -2,7 +2,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List
 
-from common.config import DASHBOARD_EVIDENCE_DIR
+# FIX 1: Import MODE so the 'if' statement actually works
+from common.config import DASHBOARD_EVIDENCE_DIR, MODE
 from common.logging import setup_logging
 
 from charts import (
@@ -23,14 +24,17 @@ FACTORIES = {
 
 
 def get_output_dir() -> Path:
+    """
+    Ensures directory exists.
+    If config.py is fixed, this points to /tmp in Lambda.
+    """
     DASHBOARD_EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
     return DASHBOARD_EVIDENCE_DIR
 
-
-def render_dashboard(figures: List[Dict]) -> str:
+def render_dashboard(figures: List[Dict], generated_at: datetime) -> str:
     sections = []
-
     for item in figures:
+        # include_plotlyjs="cdn" is excellent for Lambda (keeps response size small)
         sections.append(
             f"""
             <section class="chart-block">
@@ -52,13 +56,17 @@ def render_dashboard(figures: List[Dict]) -> str:
 </head>
 <body>
   <h1>Public Health Indicators Dashboard</h1>
+  <p style="color:#666;">
+    Generated at: {generated_at.strftime('%Y-%m-%d %H:%M:%S UTC')}
+  </p>
   {''.join(sections)}
 </body>
 </html>
 """
 
 
-def build_dashboard() -> Path:
+
+def build_dashboard() -> Path | str:
     datasets = load_all()
     figures = []
 
@@ -66,12 +74,9 @@ def build_dashboard() -> Path:
         factory = FACTORIES[viz["factory"]]
         params = viz.get("params", {})
 
-        # SINGLE DATASET
         if "dataset" in viz:
             df = datasets[viz["dataset"]]
             fig = factory(df, **params)
-
-        # MULTI DATASET (Chart 5)
         else:
             bound = {
                 role: datasets[name]
@@ -85,13 +90,20 @@ def build_dashboard() -> Path:
             "figure": fig,
         })
 
-    html = render_dashboard(figures)
+    generated_at = datetime.now(timezone.utc)
+    html = render_dashboard(figures, generated_at)
 
-    out = get_output_dir() / f"dashboard_{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}.html"
-    out.write_text(html, encoding="utf-8")
+    # FIX 2: Explicitly handle the return based on environment
+    if MODE == "LOCAL":
+        out = get_output_dir() / f"dashboard_{generated_at:%Y%m%dT%H%M%SZ}.html"
+        out.write_text(html, encoding="utf-8")
+        logger.info("Dashboard written locally → %s", out)
+        return out
 
-    logger.info("Dashboard written → %s", out)
-    return out
+    # CLOUD -> Return HTML string for the app.py to upload via Boto3
+    logger.info("Dashboard generated as HTML string for cloud upload.")
+    return html
+
 
 
 if __name__ == "__main__":

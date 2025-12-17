@@ -11,40 +11,45 @@ Responsibilities:
 
 This module is the ONLY place that knows where data lives.
 """
-
 from pathlib import Path
 import pandas as pd
 import boto3
 from typing import Dict
 
-from common.config import MODE, CLEAN_BUCKET, CLEAN_PREFIX
+# FIX 1: Import the pre-configured paths and context from common.config
+from common.config import (
+    MODE,
+    CLEAN_BUCKET,
+    CLEAN_PREFIX,
+    LOCAL_CLEAN_DIR, # <-- Use the version that handles /tmp/
+    IS_LAMBDA
+)
 from common.logging import setup_logging
 
 logger = setup_logging(__name__)
 
-# ------------------------------------------------------------------
-# LOCAL / CLOUD helpers
-# ------------------------------------------------------------------
+# FIX 2: Remove the manual 'LOCAL_CLEAN = Path("data/clean")' definition.
+# Use the imported LOCAL_CLEAN_DIR instead.
 
-LOCAL_CLEAN = Path("data/clean")
 s3 = boto3.client("s3")
-
 
 def _load_parquet(dataset: str) -> pd.DataFrame:
     """
     Load partitioned Parquet dataset and rehydrate 'year' column.
     """
     if MODE == "LOCAL":
-        base = LOCAL_CLEAN / dataset
+        # FIX 3: Use the configuration-aware directory
+        base = LOCAL_CLEAN_DIR / dataset
         paths = list(base.rglob("year=*/data.parquet"))
 
         if not paths:
             raise FileNotFoundError(
-                f"No parquet files found for LOCAL dataset: {dataset}"
+                f"No parquet files found for LOCAL dataset: {dataset} at {base}"
             )
 
         frames = []
         for p in paths:
+            # Rehydrate partition column from folder name
             year = int(p.parent.name.split("=")[1])
             df = pd.read_parquet(p)
             df["year"] = year
@@ -53,8 +58,8 @@ def _load_parquet(dataset: str) -> pd.DataFrame:
         return pd.concat(frames, ignore_index=True)
 
     # ---------------- CLOUD (S3) ----------------
+    # This section is generally safe as it reads streams directly from S3
     prefix = f"{CLEAN_PREFIX}{dataset}/"
-
     paginator = s3.get_paginator("list_objects_v2")
     pages = paginator.paginate(Bucket=CLEAN_BUCKET, Prefix=prefix)
 
@@ -65,13 +70,14 @@ def _load_parquet(dataset: str) -> pd.DataFrame:
             if not key.endswith(".parquet"):
                 continue
 
-            # Extract year from key: year=YYYY
+            # Extract year from key: .../year=YYYY/...
             try:
                 year_part = [p for p in key.split("/") if p.startswith("year=")][0]
                 year = int(year_part.split("=")[1])
-            except Exception:
+            except (IndexError, ValueError):
                 continue
 
+            # Pandas can read the S3 body stream directly; no local file write needed.
             body = s3.get_object(Bucket=CLEAN_BUCKET, Key=key)["Body"]
             df = pd.read_parquet(body)
             df["year"] = year
@@ -79,7 +85,7 @@ def _load_parquet(dataset: str) -> pd.DataFrame:
 
     if not frames:
         raise FileNotFoundError(
-            f"No parquet files found for CLOUD dataset: {dataset}"
+            f"No parquet files found for CLOUD dataset: {dataset} in bucket {CLEAN_BUCKET}"
         )
 
     return pd.concat(frames, ignore_index=True)
