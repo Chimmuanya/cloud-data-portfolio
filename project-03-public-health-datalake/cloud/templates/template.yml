@@ -22,13 +22,13 @@ Globals:
       Variables:
         RAW_PREFIX: public-health/raw/
         CLEAN_PREFIX: clean/
+        MODE: CLOUD
 
 Resources:
 
   # ===============================================================
-  # IAM FIRST — No bucket dependencies
+  # IAM ROLE — Centralized Permissions
   # ===============================================================
-
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -65,22 +65,23 @@ Resources:
               - Effect: Allow
                 Action:
                   - glue:GetDatabase
-                  - glue:GetDatabases
                   - glue:GetTable
-                  - glue:GetTables
-                  - glue:GetPartition
                   - glue:GetPartitions
+                  - glue:CreateDatabase
+                  - glue:CreateTable
                 Resource: "*"
               - Effect: Allow
                 Action:
                   - athena:StartQueryExecution
                   - athena:GetQueryExecution
                   - athena:GetQueryResults
+                  - athena:StopQueryExecution
                 Resource: "*"
 
   # ===============================================================
-  # LAMBDAS — Created before buckets
+  # LAMBDA FUNCTIONS
   # ===============================================================
+
   IngestFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -112,64 +113,54 @@ Resources:
           RAW_BUCKET: !Sub '${AWS::AccountId}-${ProjectName}-raw'
           CLEAN_BUCKET: !Sub '${AWS::AccountId}-${ProjectName}-clean'
 
-    DashboardFunction:
-      Type: AWS::Serverless::Function
-      Properties:
-        FunctionName: !Sub '${ProjectName}-dashboard'
-        CodeUri: ../../../src/dashboard/
-        Handler: app.lambda_handler
-        Role: !GetAtt LambdaExecutionRole.Arn
-        Timeout: 300
-        MemorySize: 1024
-        Environment:
+  DashboardFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-dashboard'
+      CodeUri: ../../../src/dashboard/
+      Handler: app.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 300
+      MemorySize: 1024
+      Environment:
         Variables:
-          MODE: CLOUD
-          CLEAN_BUCKET: !Ref CleanBucket
-          CLEAN_PREFIX: clean/
-          EVIDENCE_BUCKET: !Ref AthenaResultsBucket
-        Events:
-          CleanDataReady:
-            Type: S3
-            Properties:
+          CLEAN_BUCKET: !Sub '${AWS::AccountId}-${ProjectName}-clean'
+          EVIDENCE_BUCKET: !Sub '${AWS::AccountId}-${ProjectName}-athena-results'
+      Events:
+        CleanDataReady:
+          Type: S3
+          Properties:
             Bucket: !Ref CleanBucket
             Events: s3:ObjectCreated:*
             Filter:
               S3Key:
                 Rules:
                   - Name: prefix
-                    Value: "__SUCCESS__/"
+                    Value: "clean/__SUCCESS__/"
 
-    AthenaRunnerFunction:
-      Type: AWS::Serverless::Function
-      Properties:
-        FunctionName: !Sub '${ProjectName}-athena-runner'
-        CodeUri: ../../../src/athena_runner/
-        Handler: app.lambda_handler
-        Role: !GetAtt LambdaExecutionRole.Arn
-        Timeout: 900
-        MemorySize: 512
-        Environment:
+  AthenaRunnerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-athena-runner'
+      CodeUri: ../../../src/athena_runner/
+      Handler: app.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 900
+      MemorySize: 512
+      Environment:
         Variables:
-          ATHENA_DB: project03_db
-          EVIDENCE_BUCKET: !Ref AthenaResultsBucket
-          EVIDENCE_PREFIX: athena/
-          SQL_BASE_PREFIX: sql/queries/
-
+          ATHENA_DATABASE: project03_db
+          ATHENA_OUTPUT_BUCKET: !Sub '${AWS::AccountId}-${ProjectName}-athena-results'
+          ATHENA_OUTPUT_PREFIX: athena/
 
   # ===============================================================
-  # BUCKETS — Created after Lambdas, with notification config
+  # S3 BUCKETS & PERMISSIONS
   # ===============================================================
+
   RawBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub '${AWS::AccountId}-${ProjectName}-raw'
-      VersioningConfiguration:
-        Status: Enabled
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
       NotificationConfiguration:
         LambdaConfigurations:
           - Event: s3:ObjectCreated:*
@@ -181,27 +172,17 @@ Resources:
       FunctionName: !GetAtt TransformFunction.Arn
       Action: lambda:InvokeFunction
       Principal: s3.amazonaws.com
-      SourceAccount: !Ref AWS::AccountId
       SourceArn: !Sub 'arn:aws:s3:::${AWS::AccountId}-${ProjectName}-raw'
 
   CleanBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub '${AWS::AccountId}-${ProjectName}-clean'
-      VersioningConfiguration:
-        Status: Enabled
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
 
   AthenaResultsBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub '${AWS::AccountId}-${ProjectName}-athena-results'
-      VersioningConfiguration:
-        Status: Enabled
       LifecycleConfiguration:
         Rules:
           - Id: CleanupOldResults
@@ -215,7 +196,5 @@ Outputs:
     Value: !Ref CleanBucket
   AthenaResultsBucket:
     Value: !Ref AthenaResultsBucket
-  IngestLambda:
-    Value: !Ref IngestFunction
-  TransformLambda:
-    Value: !Ref TransformFunction
+  AthenaRunner:
+    Value: !Ref AthenaRunnerFunction
