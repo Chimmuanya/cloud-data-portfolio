@@ -16,6 +16,9 @@ MODE = os.getenv("MODE", "LOCAL").upper()
 IS_LOCAL = MODE == "LOCAL"
 IS_CLOUD = MODE == "CLOUD"
 
+
+AWS_REGION = os.environ.get('AWS_REGION', 'eu-west-1')
+
 # Detect if we are inside an AWS Lambda environment
 IS_LAMBDA = "AWS_LAMBDA_FUNCTION_NAME" in os.environ
 

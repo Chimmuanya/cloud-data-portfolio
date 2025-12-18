@@ -11,7 +11,17 @@ def lambda_handler(event, context):
     Runs Athena DDLs and analytical queries, writes CSVs to Evidence bucket.
     """
 
-    logger.info("Athena runner Lambda invoked")
+    # 1. Unwrap the SNS layer
+    sns_message = json.loads(event['Records'][0]['Sns']['Message'])
+
+    # 2. Access the standard S3 event data
+    s3_event = sns_message['Records'][0]['s3']
+    bucket = s3_event['bucket']['name']
+    key = s3_event['object']['key']
+
+    logger.info(f"Athena runner triggered by SNS for file: s3://{bucket}/{key}")
+
+#    logger.info("Athena runner Lambda invoked")
 
     result = run_all()
 

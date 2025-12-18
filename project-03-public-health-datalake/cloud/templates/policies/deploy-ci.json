@@ -77,6 +77,22 @@
         "logs:GetLogEvents"
       ],
       "Resource": "*"
-    }
+    },
+
+    {
+      "Effect": "Allow",
+      "Action": [
+        "sns:CreateTopic",
+        "sns:DeleteTopic",
+        "sns:GetTopicAttributes",
+        "sns:SetTopicAttributes",
+        "sns:Subscribe",
+        "sns:Unsubscribe",
+        "sns:ListSubscriptionsByTopic",
+        "sns:AddPermission",
+        "sns:RemovePermission"
+      ],
+      "Resource": "arn:aws:sns:eu-west-1:${ACCOUNT_ID}:project03-*"
+      }
   ]
 }
