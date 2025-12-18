@@ -3,8 +3,7 @@ Transform: AWS::Serverless-2016-10-31
 
 Description: >
   Project 03 — Public Health Data Lake
-  Serverless raw → clean pipeline with WHO GHO, World Bank,
-  Athena analytics, and dashboard evidence.
+  Full automated pipeline: Ingest -> Transform -> [Dashboard + Athena Analytics]
 
 Parameters:
   ProjectName:
@@ -27,7 +26,7 @@ Globals:
 Resources:
 
   # ===============================================================
-  # IAM ROLE — Centralized Permissions
+  # IAM ROLE — Unified Permissions
   # ===============================================================
   LambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -152,9 +151,20 @@ Resources:
           ATHENA_DATABASE: project03_db
           ATHENA_OUTPUT_BUCKET: !Sub '${AWS::AccountId}-${ProjectName}-athena-results'
           ATHENA_OUTPUT_PREFIX: athena/
+      Events:
+        AnalyticsTrigger:
+          Type: S3
+          Properties:
+            Bucket: !Ref CleanBucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: "clean/__SUCCESS__/"
 
   # ===============================================================
-  # S3 BUCKETS & PERMISSIONS
+  # S3 BUCKETS & TRIGGER PERMISSIONS
   # ===============================================================
 
   RawBucket:
@@ -166,7 +176,7 @@ Resources:
           - Event: s3:ObjectCreated:*
             Function: !GetAtt TransformFunction.Arn
 
-  TransformFunctionPermission:
+  TransformInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !GetAtt TransformFunction.Arn
@@ -179,6 +189,22 @@ Resources:
     Properties:
       BucketName: !Sub '${AWS::AccountId}-${ProjectName}-clean'
 
+  DashboardInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt DashboardFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub 'arn:aws:s3:::${AWS::AccountId}-${ProjectName}-clean'
+
+  AthenaRunnerInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt AthenaRunnerFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub 'arn:aws:s3:::${AWS::AccountId}-${ProjectName}-clean'
+
   AthenaResultsBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -189,6 +215,9 @@ Resources:
             Status: Enabled
             ExpirationInDays: 90
 
+# ===============================================================
+# OUTPUTS
+# ===============================================================
 Outputs:
   RawBucket:
     Value: !Ref RawBucket
@@ -196,5 +225,11 @@ Outputs:
     Value: !Ref CleanBucket
   AthenaResultsBucket:
     Value: !Ref AthenaResultsBucket
-  AthenaRunner:
+  IngestLambda:
+    Value: !Ref IngestFunction
+  TransformLambda:
+    Value: !Ref TransformFunction
+  DashboardLambda:
+    Value: !Ref DashboardFunction
+  AthenaRunnerLambda:
     Value: !Ref AthenaRunnerFunction

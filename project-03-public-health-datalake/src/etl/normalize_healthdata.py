@@ -259,6 +259,16 @@ def lambda_handler(event, context):
             transform_raw_object(raw_key, name, parser)
             break
 
+    # Create the success flag
+    s3 = boto3.client('s3')
+    CLEAN_BUCKET = os.environ['CLEAN_BUCKET']
+
+    s3.put_object(
+        Bucket=CLEAN_BUCKET,
+        Key='clean/__SUCCESS__/done.txt',
+        Body='Transformation complete'
+    )
+
     return {"statusCode": 200, "body": "ETL completed"}
 
 # ------------------------------------------------------------------
