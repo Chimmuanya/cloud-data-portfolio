@@ -24,7 +24,6 @@ Globals:
         MODE: CLOUD
 
 Resources:
-
   # ===============================================================
   # IAM ROLE — Unified Permissions
   # ===============================================================
@@ -80,7 +79,6 @@ Resources:
   # ===============================================================
   # LAMBDA FUNCTIONS
   # ===============================================================
-
   IngestFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -125,17 +123,6 @@ Resources:
         Variables:
           CLEAN_BUCKET: !Sub '${AWS::AccountId}-${ProjectName}-clean'
           EVIDENCE_BUCKET: !Sub '${AWS::AccountId}-${ProjectName}-athena-results'
-      Events:
-        CleanDataReady:
-          Type: S3
-          Properties:
-            Bucket: !Ref CleanBucket
-            Events: s3:ObjectCreated:*
-            Filter:
-              S3Key:
-                Rules:
-                  - Name: prefix
-                    Value: "clean/__SUCCESS__/"
 
   AthenaRunnerFunction:
     Type: AWS::Serverless::Function
@@ -151,30 +138,30 @@ Resources:
           ATHENA_DATABASE: project03_db
           ATHENA_OUTPUT_BUCKET: !Sub '${AWS::AccountId}-${ProjectName}-athena-results'
           ATHENA_OUTPUT_PREFIX: athena/
-      Events:
-        AnalyticsTrigger:
-          Type: S3
-          Properties:
-            Bucket: !Ref CleanBucket
-            Events: s3:ObjectCreated:*
-            Filter:
-              S3Key:
-                Rules:
-                  - Name: prefix
-                    Value: "clean/__SUCCESS__/"
 
   # ===============================================================
-  # S3 BUCKETS & TRIGGER PERMISSIONS
+  # S3 BUCKETS & NOTIFICATIONS
   # ===============================================================
-
   RawBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub '${AWS::AccountId}-${ProjectName}-raw'
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
       NotificationConfiguration:
         LambdaConfigurations:
           - Event: s3:ObjectCreated:*
             Function: !GetAtt TransformFunction.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: public-health/raw/
 
   TransformInvokePermission:
     Type: AWS::Lambda::Permission
@@ -188,14 +175,41 @@ Resources:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub '${AWS::AccountId}-${ProjectName}-clean'
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
 
+  # Single consolidated notification for CleanBucket (avoids overlapping rule error)
+  CleanBucketNotification:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CleanBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Action: lambda:InvokeFunction
+            Resource:
+              - !GetAtt DashboardFunction.Arn
+              - !GetAtt AthenaRunnerFunction.Arn
+            Condition:
+              ArnLike:
+                aws:SourceArn: !GetAtt CleanBucket.Arn
+
+  # Permissions for both Lambdas to be invoked by CleanBucket
   DashboardInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !GetAtt DashboardFunction.Arn
       Action: lambda:InvokeFunction
       Principal: s3.amazonaws.com
-      SourceArn: !Sub 'arn:aws:s3:::${AWS::AccountId}-${ProjectName}-clean'
+      SourceArn: !GetAtt CleanBucket.Arn
 
   AthenaRunnerInvokePermission:
     Type: AWS::Lambda::Permission
@@ -203,33 +217,59 @@ Resources:
       FunctionName: !GetAtt AthenaRunnerFunction.Arn
       Action: lambda:InvokeFunction
       Principal: s3.amazonaws.com
-      SourceArn: !Sub 'arn:aws:s3:::${AWS::AccountId}-${ProjectName}-clean'
+      SourceArn: !GetAtt CleanBucket.Arn
 
   AthenaResultsBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub '${AWS::AccountId}-${ProjectName}-athena-results'
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
       LifecycleConfiguration:
         Rules:
           - Id: CleanupOldResults
             Status: Enabled
             ExpirationInDays: 90
 
-# ===============================================================
-# OUTPUTS
-# ===============================================================
+  # ===============================================================
+  # OUTPUTS
+  # ===============================================================
 Outputs:
   RawBucket:
+    Description: Raw immutable data bucket
     Value: !Ref RawBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-RawBucket'
+
   CleanBucket:
+    Description: Clean Parquet data bucket (Athena-ready)
     Value: !Ref CleanBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-CleanBucket'
+
   AthenaResultsBucket:
+    Description: Bucket for Athena query results and evidence
     Value: !Ref AthenaResultsBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-AthenaResults'
+
   IngestLambda:
+    Description: Daily ingest function
     Value: !Ref IngestFunction
+
   TransformLambda:
+    Description: Raw to Clean transform function
     Value: !Ref TransformFunction
+
   DashboardLambda:
+    Description: Dashboard generation function
     Value: !Ref DashboardFunction
+
   AthenaRunnerLambda:
+    Description: Athena analytics runner function
     Value: !Ref AthenaRunnerFunction
