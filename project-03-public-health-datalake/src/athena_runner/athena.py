@@ -7,7 +7,10 @@ from common.config import (
     ATHENA_DATABASE,
     ATHENA_OUTPUT_BUCKET,
     ATHENA_OUTPUT_PREFIX,
+    ATHENA_OUTPUT_PATH,
+    CLEAN_BUCKET,
 )
+# from common.config import ATHENA_OUTPUT_PATH
 from common.logging import setup_logging
 
 logger = setup_logging(__name__)
@@ -47,19 +50,20 @@ def run_athena_query(
         TimeoutError: If query does not complete within max_retries
     """
     db = database or ATHENA_DATABASE
-    output_location = (
-        f"s3://{ATHENA_OUTPUT_BUCKET}/"
-        f"{ATHENA_OUTPUT_PREFIX.rstrip('/')}/{output_prefix.strip('/')}/"
-    )
+    # output_location = (
+    #     f"s3://{ATHENA_OUTPUT_BUCKET}/"
+    #     f"{ATHENA_OUTPUT_PREFIX.rstrip('/')}/{output_prefix.strip('/')}/"
+    # )
 
     logger.info("Submitting Athena query to DB: %s", db)
+    # Replace the template placeholder with the actual bucket name from config.py
+    prepared_sql = sql.replace("<CLEAN_BUCKET>", CLEAN_BUCKET)
 
-    # FIX: Add WorkGroup (usually 'primary') to ensure execution
-    # and handle ResultConfiguration overrides.
+    # Use prepared_sql in the execution call
     response = athena.start_query_execution(
-        QueryString=sql,
+        QueryString=prepared_sql,
         QueryExecutionContext={"Database": db},
-        ResultConfiguration={"OutputLocation": output_location},
+        ResultConfiguration={"OutputLocation": ATHENA_OUTPUT_PATH},
         WorkGroup=work_group
     )
 

@@ -9,6 +9,7 @@ Public Health ETL (Raw → Clean)
 - Lambda-compatible and local-runnable
 """
 
+import os
 import json
 import io
 import hashlib
@@ -48,7 +49,7 @@ s3 = boto3.client("s3", region_name=AWS_REGION)
 # ------------------------------------------------------------------
 # LOCAL paths
 # ------------------------------------------------------------------
-LOCAL_MANIFEST_PATH = LOCAL_DATA_DIR / "etl_manifest.json"
+LOCAL_MANIFEST_PATH = LOCAL_DATA_DIR/"etl_manifest.json"
 
 # ------------------------------------------------------------------
 # Utilities
@@ -136,6 +137,46 @@ def parse_worldbank_json(data: list) -> pd.DataFrame:
     df["year"] = df["year"].astype(int)
 
     return df
+
+def parse_who_outbreaks_json(data) -> pd.DataFrame:
+    records = []
+
+    # DON can be a list or a single object
+    if isinstance(data, list):
+        items = data
+    elif isinstance(data, dict):
+        items = [data]
+    else:
+        return pd.DataFrame()
+
+    for rec in items:
+        try:
+            pub_date = rec.get("PublicationDate")
+            if not pub_date:
+                continue
+
+            dt = pd.to_datetime(pub_date, utc=True, errors="coerce")
+            if pd.isna(dt):
+                continue
+
+            records.append({
+                "outbreak_id": rec.get("Id") or rec.get("UrlName"),
+                "title": rec.get("Title"),
+                "summary": rec.get("Summary"),
+                "publication_date": dt,
+                "source_url": rec.get("ItemDefaultUrl"),
+                "year": dt.year,
+            })
+        except Exception:
+            continue
+
+    df = pd.DataFrame(records)
+    if not df.empty:
+        df["year"] = df["year"].astype(int)
+
+    return df
+
+
 
 # ------------------------------------------------------------------
 # I/O helpers
@@ -239,6 +280,7 @@ ROUTERS = {
     "cholera": parse_gho_json,
     "wb_hospital_beds_per_1000": parse_worldbank_json,
     "wb_physicians_per_1000": parse_worldbank_json,
+    "who_outbreaks": parse_who_outbreaks_json,
 }
 
 # ------------------------------------------------------------------

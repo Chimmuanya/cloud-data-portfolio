@@ -11,6 +11,7 @@ Responsibilities:
 
 This module is the ONLY place that knows where data lives.
 """
+import io
 from pathlib import Path
 import pandas as pd
 import boto3
@@ -78,8 +79,10 @@ def _load_parquet(dataset: str) -> pd.DataFrame:
                 continue
 
             # Pandas can read the S3 body stream directly; no local file write needed.
-            body = s3.get_object(Bucket=CLEAN_BUCKET, Key=key)["Body"]
-            df = pd.read_parquet(body)
+            # FIX: Read the stream into a BytesIO buffer to allow seeking
+            body = s3.get_object(Bucket=CLEAN_BUCKET, Key=key)["Body"].read()
+            df = pd.read_parquet(io.BytesIO(body))
+
             df["year"] = year
             frames.append(df)
 

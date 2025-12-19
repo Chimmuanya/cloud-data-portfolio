@@ -1,14 +1,11 @@
--- WHO indicators (Parquet, partitioned)
-CREATE EXTERNAL TABLE IF NOT EXISTS project03_db.who_indicators (
-  country_code     string,
-  value            double
-)
-PARTITIONED BY (
-  indicator_code   string,
-  year             int
-)
-STORED AS PARQUET
-LOCATION 's3://<CLEAN_BUCKET>/clean/who_indicators/'
-TBLPROPERTIES (
-  'parquet.compression' = 'SNAPPY'
-);
+CREATE OR REPLACE VIEW project03_db.who_indicators AS
+SELECT country_code, indicator_code, year, value
+FROM project03_db.life_expectancy
+
+UNION ALL
+SELECT country_code, indicator_code, year, value
+FROM project03_db.malaria_incidence
+
+UNION ALL
+SELECT country_code, indicator_code, year, value
+FROM project03_db.cholera;

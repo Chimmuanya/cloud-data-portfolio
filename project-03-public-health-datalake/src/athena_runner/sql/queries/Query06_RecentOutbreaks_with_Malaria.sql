@@ -15,10 +15,10 @@ recent_outbreaks AS (
   SELECT *
   FROM project03_db.who_outbreaks
   WHERE publication_date IS NOT NULL
-    AND from_iso8601_timestamp(publication_date) >= date_add('day', -90, current_timestamp)
+    AND publication_date >= date_add('day', -90, current_timestamp)
 )
 SELECT r.publication_date, r.title, r.country_iso, ml.malaria_value
 FROM recent_outbreaks r
 LEFT JOIN malaria_latest ml ON ml.country_code = r.country_iso
-ORDER BY from_iso8601_timestamp(r.publication_date) DESC
+ORDER BY r.publication_date DESC
 LIMIT 200;

@@ -10,6 +10,9 @@ Parameters:
     Type: String
     Default: project03
     Description: Short project identifier
+  PandasLayerArn:
+    Type: String
+    Default: "arn:aws:lambda:eu-west-1:336392948345:layer:AWSSDKPandas-Python311:24"  # Latest stable as of Dec 2025
 
 Globals:
   Function:
@@ -19,13 +22,27 @@ Globals:
     Tracing: Active
     Environment:
       Variables:
+        MODE: CLOUD
+        RAW_BUCKET: !Sub '${AWS::AccountId}-${ProjectName}-raw'
+        CLEAN_BUCKET: !Sub '${AWS::AccountId}-${ProjectName}-clean'
+        EVIDENCE_BUCKET: !Sub '${AWS::AccountId}-${ProjectName}-athena-results'
         RAW_PREFIX: public-health/raw/
         CLEAN_PREFIX: clean/
-        MODE: CLOUD
 
 Resources:
   # ===============================================================
-  # SNS TOPIC (The Fan-out Hub)
+  # GLUE DATABASE FOR ATHENA
+  # ===============================================================
+  AthenaDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput:
+        Name: "project03_db"
+        Description: "Public Health Data Lake Database"
+
+  # ===============================================================
+  # SNS TOPIC
   # ===============================================================
   PipelineTopic:
     Type: AWS::SNS::Topic
@@ -35,7 +52,8 @@ Resources:
   TopicPolicy:
     Type: AWS::SNS::TopicPolicy
     Properties:
-      Topics: [!Ref PipelineTopic]
+      Topics:
+        - !Ref PipelineTopic
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -49,7 +67,7 @@ Resources:
                 aws:SourceArn: !Sub 'arn:aws:s3:::${AWS::AccountId}-${ProjectName}-clean'
 
   # ===============================================================
-  # IAM ROLE — Unified Permissions
+  # IAM ROLE
   # ===============================================================
   LambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -72,18 +90,16 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:ListBucket
-                Resource:
-                  - !Sub 'arn:aws:s3:::${AWS::AccountId}-${ProjectName}-raw'
-                  - !Sub 'arn:aws:s3:::${AWS::AccountId}-${ProjectName}-clean'
-                  - !Sub 'arn:aws:s3:::${AWS::AccountId}-${ProjectName}-athena-results'
-              - Effect: Allow
-                Action:
                   - s3:GetObject
                   - s3:PutObject
                   - s3:DeleteObject
+                  - s3:GetBucketLocation
                 Resource:
+                  - !Sub 'arn:aws:s3:::${AWS::AccountId}-${ProjectName}-raw'
                   - !Sub 'arn:aws:s3:::${AWS::AccountId}-${ProjectName}-raw/*'
+                  - !Sub 'arn:aws:s3:::${AWS::AccountId}-${ProjectName}-clean'
                   - !Sub 'arn:aws:s3:::${AWS::AccountId}-${ProjectName}-clean/*'
+                  - !Sub 'arn:aws:s3:::${AWS::AccountId}-${ProjectName}-athena-results'
                   - !Sub 'arn:aws:s3:::${AWS::AccountId}-${ProjectName}-athena-results/*'
               - Effect: Allow
                 Action:
@@ -92,14 +108,11 @@ Resources:
                   - glue:GetPartitions
                   - glue:CreateDatabase
                   - glue:CreateTable
-                Resource: "*"
-              - Effect: Allow
-                Action:
                   - athena:StartQueryExecution
                   - athena:GetQueryExecution
                   - athena:GetQueryResults
                   - athena:StopQueryExecution
-                Resource: "*"
+                Resource: '*'
 
   # ===============================================================
   # LAMBDA FUNCTIONS
@@ -111,9 +124,6 @@ Resources:
       CodeUri: ../../../src/ingest/
       Handler: app.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
-      Environment:
-        Variables:
-          RAW_BUCKET: !Sub '${AWS::AccountId}-${ProjectName}-raw'
       Events:
         DailyTrigger:
           Type: Schedule
@@ -130,10 +140,8 @@ Resources:
       Role: !GetAtt LambdaExecutionRole.Arn
       Timeout: 900
       MemorySize: 1024
-      Environment:
-        Variables:
-          RAW_BUCKET: !Sub '${AWS::AccountId}-${ProjectName}-raw'
-          CLEAN_BUCKET: !Sub '${AWS::AccountId}-${ProjectName}-clean'
+      Layers:
+        - !Ref PandasLayerArn
 
   DashboardFunction:
     Type: AWS::Serverless::Function
@@ -144,10 +152,8 @@ Resources:
       Role: !GetAtt LambdaExecutionRole.Arn
       Timeout: 300
       MemorySize: 1024
-      Environment:
-        Variables:
-          CLEAN_BUCKET: !Sub '${AWS::AccountId}-${ProjectName}-clean'
-          EVIDENCE_BUCKET: !Sub '${AWS::AccountId}-${ProjectName}-athena-results'
+      Layers:
+        - !Ref PandasLayerArn
       Events:
         SNSEvent:
           Type: SNS
@@ -163,6 +169,8 @@ Resources:
       Role: !GetAtt LambdaExecutionRole.Arn
       Timeout: 900
       MemorySize: 512
+      Layers:
+        - !Ref PandasLayerArn
       Environment:
         Variables:
           ATHENA_DATABASE: project03_db
@@ -175,7 +183,7 @@ Resources:
             Topic: !Ref PipelineTopic
 
   # ===============================================================
-  # S3 BUCKETS & NOTIFICATIONS
+  # S3 BUCKETS
   # ===============================================================
   RawBucket:
     Type: AWS::S3::Bucket
@@ -247,44 +255,41 @@ Resources:
       Principal: s3.amazonaws.com
       SourceArn: !Sub 'arn:aws:s3:::${AWS::AccountId}-${ProjectName}-raw'
 
-  # ===============================================================
-  # OUTPUTS
-  # ===============================================================
 Outputs:
   RawBucket:
-    Description: Raw immutable data bucket
+    Description: "Raw immutable data bucket"
     Value: !Ref RawBucket
     Export:
       Name: !Sub '${AWS::StackName}-RawBucket'
 
   CleanBucket:
-    Description: Clean Parquet data bucket (Athena-ready)
+    Description: "Clean Parquet data bucket (Athena-ready)"
     Value: !Ref CleanBucket
     Export:
       Name: !Sub '${AWS::StackName}-CleanBucket'
 
   AthenaResultsBucket:
-    Description: Bucket for Athena query results and evidence
+    Description: "Bucket for Athena query results and evidence"
     Value: !Ref AthenaResultsBucket
     Export:
       Name: !Sub '${AWS::StackName}-AthenaResults'
 
   IngestLambda:
-    Description: Daily ingest function
+    Description: "Daily ingest function"
     Value: !Ref IngestFunction
 
   TransformLambda:
-    Description: Raw → Clean transform function
+    Description: "Raw → Clean transform function"
     Value: !Ref TransformFunction
 
   DashboardLambda:
-    Description: Dashboard generation function
+    Description: "Dashboard generation function"
     Value: !Ref DashboardFunction
 
   AthenaRunnerLambda:
-    Description: Athena analytics runner function
+    Description: "Athena analytics runner function"
     Value: !Ref AthenaRunnerFunction
 
   CleanTopicArn:
-    Description: SNS Topic for Clean Data Notifications
+    Description: "SNS Topic for Clean Data Notifications"
     Value: !Ref PipelineTopic
