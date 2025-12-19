@@ -1,6 +1,6 @@
 -- Query01: Latest life expectancy per country (indicator WHOSIS_000001)
 WITH parts AS (
-  SELECT * FROM project03_db.who_indicators
+  SELECT * FROM project03_db.life_expectancy
   WHERE indicator_code = 'WHOSIS_000001'
 )
 SELECT w.country_code, w.year, w.value

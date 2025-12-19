@@ -1,4 +1,4 @@
-CREATE EXTERNAL TABLE project03_db.life_expectancy (
+CREATE EXTERNAL TABLE IF NOT EXISTS project03_db.life_expectancy (
   country_code string,
   indicator_code string,
   value double
