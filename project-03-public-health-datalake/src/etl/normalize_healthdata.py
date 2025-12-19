@@ -17,6 +17,8 @@ from datetime import datetime, timezone
 from typing import Dict, Any, Callable
 from pathlib import Path
 import urllib.parse  # <--- NEW IMPORT
+import re
+import pycountry
 
 import boto3
 import pandas as pd
@@ -34,6 +36,30 @@ from common.config import (
     LOCAL_DATA_DIR,  # <--- Add this import
 )
 from common.logging import setup_logging
+
+from html import unescape
+from html.parser import HTMLParser
+
+class HTMLStripper(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.data = []
+
+    def handle_data(self, d):
+        self.data.append(d)
+
+    def get_data(self):
+        return " ".join(self.data)
+
+def clean_html(text: str | None) -> str | None:
+    if not text:
+        return None
+
+    stripper = HTMLStripper()
+    stripper.feed(text)
+    cleaned = stripper.get_data()
+    return unescape(cleaned).strip()
+
 
 # ------------------------------------------------------------------
 # Logging
@@ -60,6 +86,114 @@ def _utc_now() -> str:
 
 def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+# Precompile country lookup map for speed
+COUNTRY_LOOKUP = {
+    c.name.lower(): c for c in pycountry.countries
+}
+COUNTRY_ALIASES = {
+    "bolivia": "Bolivia, Plurinational State of",
+    "venezuela": "Venezuela, Bolivarian Republic of",
+    "iran": "Iran, Islamic Republic of",
+    "syria": "Syrian Arab Republic",
+    "tanzania": "Tanzania, United Republic of",
+    "laos": "Lao People's Democratic Republic",
+    "south korea": "Korea, Republic of",
+    "north korea": "Korea, Democratic People's Republic of",
+    "ivory coast": "Côte d'Ivoire",
+    "arabia": "Saudi Arabia",
+}
+
+
+def lookup_country(name: str):
+    if not name:
+        return None, None, None
+
+    key = name.lower().strip()
+    key = COUNTRY_ALIASES.get(key, key)
+
+    try:
+        c = pycountry.countries.lookup(key)
+        return c.name, c.alpha_2, c.alpha_3
+    except LookupError:
+        return None, None, None
+
+
+def extract_country_from_title(title: str | None):
+    """
+    Extract and validate country from WHO DON title.
+
+    Strategy:
+    1. Try last dash segment (high precision)
+    2. If fails, try previous dash segment
+    3. If still fails, try regex 'in <Country>'
+    """
+
+    if not title:
+        return None, None, None
+
+    title_clean = title.strip()
+
+    # -------------------------
+    # Stage 1 — dash-based extraction
+    # -------------------------
+    parts = [p.strip() for p in re.split(r"\s*[-–—]\s*", title_clean)]
+
+    # Iterate from RIGHT → LEFT (handles 2+ dashes)
+    for segment in reversed(parts):
+        # Normalize WHO phrasing
+        candidate = re.sub(
+            r"^(situation in|cases in|outbreak in|reported in)\s+",
+            "",
+            segment,
+            flags=re.IGNORECASE,
+        ).strip()
+
+        if len(candidate) > 40 or not candidate:
+            continue
+
+        country = lookup_country(candidate)
+        if country[0]:
+            return country
+
+    # -------------------------
+    # Stage 2 — regex fallback: "in <Country>"
+    # -------------------------
+    match = re.search(
+        r"\b(?:in|from|reported in)\s+([A-Z][A-Za-z\s\-']{2,40})",
+        title_clean,
+    )
+    if match:
+        candidate = match.group(1).strip()
+        country = lookup_country(candidate)
+        if country[0]:
+            return country
+
+    return None, None, None
+
+
+def extract_disease_from_title(title: str | None) -> str | None:
+    if not title:
+        return None
+
+    parts = re.split(r"\s*[-–—]\s*", title)
+    disease = parts[0].strip()
+
+    # Clean common trailing phrases
+    disease = re.sub(
+        r"\b(situation in|update|cases)\b.*$",
+        "",
+        disease,
+        flags=re.IGNORECASE,
+    ).strip()
+
+    if not disease:
+        return None
+
+    return disease
+
+
 
 # ------------------------------------------------------------------
 # Manifest handling
@@ -138,37 +272,41 @@ def parse_worldbank_json(data: list) -> pd.DataFrame:
 
     return df
 
+
+
 def parse_who_outbreaks_json(data) -> pd.DataFrame:
     records = []
 
-    # DON always wraps articles in "Items"
-    if isinstance(data, dict) and "Items" in data:
-        items = data["Items"]
-    elif isinstance(data, list):
-        items = data
-    else:
+    if not isinstance(data, dict) or "value" not in data:
         return pd.DataFrame()
 
-    for rec in items:
-        try:
-            pub_date = rec.get("PublicationDate")
-            if not pub_date:
-                continue
-
-            dt = pd.to_datetime(pub_date, utc=True, errors="coerce")
-            if pd.isna(dt):
-                continue
-
-            records.append({
-                "outbreak_id": rec.get("Id") or rec.get("UrlName"),
-                "title": rec.get("Title"),
-                "summary": rec.get("Summary"),
-                "publication_date": dt,
-                "source_url": rec.get("ItemDefaultUrl"),
-                "year": dt.year,
-            })
-        except Exception:
+    for rec in data["value"]:
+        pub_date = rec.get("PublicationDate")
+        if not pub_date:
             continue
+
+        dt = pd.to_datetime(pub_date, utc=True, errors="coerce")
+        if pd.isna(dt):
+            continue
+
+        raw_title = rec.get("Title")
+        clean_title = clean_html(raw_title)
+
+        country_name, country_iso2, country_iso3 = extract_country_from_title(raw_title)
+
+        records.append({
+            "outbreak_id": rec.get("Id") or rec.get("DonId"),
+            "title": clean_title,
+            "summary": clean_html(rec.get("Summary")),
+            "overview": clean_html(rec.get("Overview")),
+            "disease": extract_disease_from_title(raw_title),
+            "country": country_name,
+            "country_iso2": country_iso2,
+            "country_iso3": country_iso3,
+            "publication_date": dt,
+            "source_url": rec.get("ItemDefaultUrl"),
+            "year": dt.year,
+        })
 
     df = pd.DataFrame(records)
     if not df.empty:
