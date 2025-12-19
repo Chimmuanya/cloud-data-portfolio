@@ -1,6 +1,4 @@
-DROP TABLE IF EXISTS project03_db.cholera;
-
-CREATE EXTERNAL TABLE project03_db.cholera (
+CREATE EXTERNAL TABLE IF NOT EXISTS project03_db.cholera (
   country_code string,
   indicator_code string,
   value double

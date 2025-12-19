@@ -1,5 +1,3 @@
-DROP TABLE IF EXISTS project03_db.malaria_incidence;
-
 CREATE EXTERNAL TABLE project03_db.malaria_incidence (
   country_code string,
   indicator_code string,

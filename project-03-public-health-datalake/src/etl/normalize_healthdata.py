@@ -141,11 +141,11 @@ def parse_worldbank_json(data: list) -> pd.DataFrame:
 def parse_who_outbreaks_json(data) -> pd.DataFrame:
     records = []
 
-    # DON can be a list or a single object
-    if isinstance(data, list):
+    # DON always wraps articles in "Items"
+    if isinstance(data, dict) and "Items" in data:
+        items = data["Items"]
+    elif isinstance(data, list):
         items = data
-    elif isinstance(data, dict):
-        items = [data]
     else:
         return pd.DataFrame()
 

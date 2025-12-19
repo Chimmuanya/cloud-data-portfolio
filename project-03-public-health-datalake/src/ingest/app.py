@@ -86,7 +86,7 @@ ENDPOINTS: List[Dict[str, str]] = [
     },
     {
         "name": "who_outbreaks",
-        "url": "api/emergencies/diseaseoutbreaknews",
+        "url": "https://www.who.int/api/emergencies/diseaseoutbreaknews",
     },
     {
         "name": "wb_hospital_beds_per_1000",

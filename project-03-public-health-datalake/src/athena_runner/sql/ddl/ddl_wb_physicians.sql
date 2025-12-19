@@ -1,5 +1,3 @@
-DROP TABLE IF EXISTS project03_db.wb_physicians_per_1000;
-
 CREATE EXTERNAL TABLE project03_db.wb_physicians_per_1000 (
   country_code string,
   indicator_id string,
