@@ -1,0 +1,19 @@
+# ---- Core runtime ----
+pandas
+numpy
+pycountry
+requests
+urllib3
+boto3
+
+# ---- Analytics ----
+duckdb
+
+# ---- Evidence / Parquet I/O ----
+pyarrow
+
+# ---- Visualization ----
+plotly>=5.15.0
+
+# ---- Optional (safe defaults) ----
+python-dateutil
