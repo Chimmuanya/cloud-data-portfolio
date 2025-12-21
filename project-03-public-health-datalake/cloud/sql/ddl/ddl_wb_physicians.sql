@@ -5,4 +5,11 @@ CREATE EXTERNAL TABLE IF NOT EXISTS project03_db.wb_physicians_per_1000 (
 )
 PARTITIONED BY (year int)
 STORED AS PARQUET
-LOCATION 's3://<CLEAN_BUCKET>/clean/wb_physicians_per_1000/';
+LOCATION 's3://<CLEAN_BUCKET>/clean/wb_physicians_per_1000/'
+TBLPROPERTIES (
+  'projection.enabled' = 'true',
+  'projection.year.type' = 'integer',
+  'projection.year.range' = '2000,2025',
+  'storage.location.template' =
+    's3://<CLEAN_BUCKET>/clean/wb_physicians_per_1000/year=${year}'
+);

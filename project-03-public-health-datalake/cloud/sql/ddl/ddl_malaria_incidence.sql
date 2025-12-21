@@ -5,4 +5,11 @@ CREATE EXTERNAL TABLE IF NOT EXISTS project03_db.malaria_incidence (
 )
 PARTITIONED BY (year int)
 STORED AS PARQUET
-LOCATION 's3://<CLEAN_BUCKET>/clean/malaria_incidence/';
+LOCATION 's3://<CLEAN_BUCKET>/clean/malaria_incidence/'
+TBLPROPERTIES (
+  'projection.enabled' = 'true',
+  'projection.year.type' = 'integer',
+  'projection.year.range' = '2000,2025',
+  'storage.location.template' =
+    's3://<CLEAN_BUCKET>/clean/malaria_incidence/year=${year}'
+);
