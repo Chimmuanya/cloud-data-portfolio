@@ -1,6 +1,6 @@
 -- Query02: Top 20 countries by Cholera (most recent year)
 WITH cholera AS (
-  SELECT * FROM project03_db.who_indicators WHERE indicator_code = 'CHOLERA_0000000001'
+  SELECT * FROM project03_db.cholera WHERE indicator_code = 'CHOLERA_0000000001'
 ),
 latest AS (
   SELECT country_code, MAX(year) AS year

@@ -1,10 +1,10 @@
 -- Query07: Percent change in life expectancy between 2000 and 2020
 WITH le2000 AS (
-  SELECT country_code, value AS le_2000 FROM project03_db.who_indicators
+  SELECT country_code, value AS le_2000 FROM project03_db.life_expectancy
   WHERE indicator_code = 'WHOSIS_000001' AND year = 2000
 ),
 le2020 AS (
-  SELECT country_code, value AS le_2020 FROM project03_db.who_indicators
+  SELECT country_code, value AS le_2020 FROM project03_db.life_expectancy
   WHERE indicator_code = 'WHOSIS_000001' AND year = 2020
 )
 SELECT l20.country_code,

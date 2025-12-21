@@ -5,8 +5,8 @@ SELECT
   curr.value AS value_curr,
   prev.value AS value_prev,
   100.0 * (curr.value - prev.value) / NULLIF(prev.value,0) AS pct_change
-FROM project03_db.who_indicators curr
-LEFT JOIN project03_db.who_indicators prev
+FROM project03_db.malaria_incidence curr
+LEFT JOIN project03_db.malaria_incidence prev
   ON curr.country_code = prev.country_code
   AND curr.indicator_code = prev.indicator_code
   AND curr.year = prev.year + 1
