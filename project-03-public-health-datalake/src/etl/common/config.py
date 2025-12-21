@@ -64,8 +64,12 @@ if IS_LAMBDA:
     BASE_DATA_PATH = Path("/tmp") / "data"
     BASE_EVIDENCE_PATH = Path("/tmp") / "evidence"
 else:
-    BASE_DATA_PATH = Path("data")
-    BASE_EVIDENCE_PATH = Path(os.getenv("EVIDENCE_DIR", Path.cwd() / "evidence"))
+    PROJECT_ROOT = Path(__file__).resolve().parents[3]
+    # LOCAL_RUN_ROOT = PROJECT_ROOT / "local_run" ---ERROR FOR THIS LOCAL ENVT
+
+    BASE_DATA_PATH = PROJECT_ROOT / "local_data"
+    BASE_EVIDENCE_PATH = PROJECT_ROOT / "evidence"
+
 
 LOCAL_DATA_DIR = BASE_DATA_PATH
 LOCAL_RAW_DIR = BASE_DATA_PATH / "raw"
