@@ -107,7 +107,7 @@ project-03-public-health-datalake/
 ├── cloud/                 # AWS infrastructure (IaC templates, generated artifacts, scripts)
 │   ├── templates/         # Authoritative CloudFormation/SAM YAML (editable)
 │   ├── generated/         # Auto-generated deployment files (do not edit)
-│   └── scripts/           # Orchestration: bootstrap.sh, deploy.sh, run_pipeline.sh
+│   └── scripts/           # Orchestration: bootstrap.sh, deploy.sh, run_all.sh
 ├── src/                   # Core Python logic (cloud-agnostic where possible)
 │   ├── _shared/common/    # Shared utilities (config, logging)
 │   ├── ingest/            # API fetching, raw storage (app.py, local_test.py)
